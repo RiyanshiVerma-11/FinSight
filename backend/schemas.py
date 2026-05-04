@@ -43,6 +43,7 @@ class UserShapResponse(BaseModel):
     user_id: str
     churn_probability: float
     revenue_at_risk: float
+    predicted_ltv: float
     segment: str
     top_drivers: list[ShapFeature]
     explanation_summary: str

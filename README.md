@@ -138,8 +138,11 @@ graph LR
 6. **Revenue-at-Risk** → `monetary × churn_probability` per user and segment
 7. **What-If Simulation** → Counterfactual analysis with revenue impact projections
 8. **Hypothesis Generation** → LLM-powered or rule-based business strategies
+### 📈 Pro-Level Analytics & Features
 
-### ML Models & Metrics
+- **Interactive Onboarding (Joyride)**: Guided tour for first-time users highlighting key platform capabilities.
+- **Predicted LTV (Customer Lifetime Value)**: Advanced heuristic modeling combining historical spend and churn probability to forecast future revenue.
+- **Cohort Analysis**: Deep dive into user retention grouped by acquisition month to compare long-term engagement across different user generations.
 - **Random Forest Classifier** (100 trees) — primary model
 - **XGBoost Classifier** — comparison model
 - **Evaluation**: ROC-AUC, F1, Precision, Recall, 5-Fold CV AUC

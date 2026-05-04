@@ -48,7 +48,6 @@
 }
 
 html {
-  scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -92,7 +91,7 @@ body::after {
 .app-container {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 1.5rem 2rem 3rem;
+  padding: 1.5rem 2rem 20rem;
 }
 
 /* ───────── Header ───────── */
@@ -107,7 +106,6 @@ body::after {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
   position: relative;
-  overflow: hidden;
 }
 .header::before {
   content: '';

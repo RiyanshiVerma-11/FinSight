@@ -191,6 +191,10 @@ class AnalyticsEngine:
 
         # Revenue at Risk
         rfm_df['revenue_at_risk'] = rfm_df['monetary'] * rfm_df['churn_probability']
+        
+        # Predicted Customer Lifetime Value (LTV)
+        # Heuristic: Historical spend + Expected future spend based on retention probability
+        rfm_df['predicted_ltv'] = rfm_df['monetary'] + (rfm_df['monetary'] * (1 - rfm_df['churn_probability']) * 1.5)
 
         # 7. Drivers & SHAP
         importances = self.model.feature_importances_
@@ -313,6 +317,7 @@ class AnalyticsEngine:
             'user_id': str(user_id),
             'churn_probability': float(user.get('churn_probability', 0)),
             'revenue_at_risk': float(user.get('revenue_at_risk', 0)),
+            'predicted_ltv': float(user.get('predicted_ltv', user.get('monetary', 0))),
             'segment': str(user.get('segment', 'Unknown')),
             'top_drivers': [],
             'explanation_summary': ''
