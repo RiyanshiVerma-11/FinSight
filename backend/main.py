@@ -381,11 +381,20 @@ async def analyze_data(file: UploadFile = File(...)):
                    "Please ensure your file has Customer ID, Date, and Amount/Price columns."
         )
     
+    # 4. Memory Guard: Sample large datasets on free tier to prevent OOM
+    if len(df) > 100000:
+        logger.info(f"⚡ Large dataset detected ({len(df)} rows). Sampling 100,000 rows for analysis to prevent memory crash.")
+        df = df.sample(100000, random_state=42).sort_values('timestamp')
+
     try:
         return _process_dataframe(df, cache_key="upload")
     except Exception as e:
         logger.error(f"Analysis failed for uploaded file: {e}")
-        raise HTTPException(status_code=500, detail=f"Analytics engine failed: {str(e)}")
+        # Provide a more helpful error message
+        detail = str(e)
+        if "MemoryError" in detail:
+            detail = "The dataset is too large for the server's RAM. Please try uploading a smaller CSV file."
+        raise HTTPException(status_code=500, detail=f"Analytics engine failed: {detail}")
 
 
 # ──────────────────────────────────────

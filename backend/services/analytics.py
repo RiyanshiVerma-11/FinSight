@@ -60,16 +60,16 @@ class AnalyticsEngine:
         })
         rfm.columns = ['recency', 'frequency', 'monetary']
 
-        # ── Dynamic Feature: Inter-Purchase Interval ──
-        def calc_ipi(group):
-            ts = group['timestamp'].sort_values()
-            if len(ts) < 2:
-                return pd.Series({'ipi_median': 0.0, 'ipi_std': 0.0})
-            diffs = ts.diff().dropna().dt.days
-            return pd.Series({'ipi_median': float(diffs.median()), 'ipi_std': float(diffs.std()) if len(diffs) > 1 else 0.0})
-
-        ipi_data = df.groupby('user_id').apply(calc_ipi).reset_index()
-        ipi_data.set_index('user_id', inplace=True)
+        # ── Optimized Dynamic Feature: Inter-Purchase Interval ──
+        # Vectorized approach: sort, diff, then group
+        temp_df = df[['user_id', 'timestamp']].sort_values(['user_id', 'timestamp'])
+        temp_df['diff'] = temp_df.groupby('user_id')['timestamp'].diff().dt.days
+        
+        ipi_data = temp_df.groupby('user_id')['diff'].agg(
+            ipi_median='median',
+            ipi_std='std'
+        ).fillna(0)
+        
         rfm = rfm.join(ipi_data)
 
         # Recency Deviation: how overdue is this user vs their own pattern
@@ -109,7 +109,13 @@ class AnalyticsEngine:
         rfm['cluster'] = kmeans.fit_predict(scaled_features)
 
         try:
-            sil_score = silhouette_score(scaled_features, rfm['cluster'])
+            # OPTIMIZATION: Silhouette is O(N^2). Sample if N is large.
+            if len(rfm) > 5000:
+                indices = np.random.choice(len(rfm), 5000, replace=False)
+                sil_score = silhouette_score(scaled_features[indices], rfm['cluster'].iloc[indices])
+                logger.info(f"Silhouette score calculated using 5,000 sample points (N={len(rfm)})")
+            else:
+                sil_score = silhouette_score(scaled_features, rfm['cluster'])
         except Exception as e:
             logger.error(f"Error calculating silhouette score: {e}")
             sil_score = 0.0
@@ -168,15 +174,19 @@ class AnalyticsEngine:
         y_pred_proba = self.model.predict_proba(X_test)[:, 1]
         y_pred = self.model.predict(X_test)
         
-        # Cross-validation
-        cv_n = min(5, len(X_train_full) // 5)
-        if cv_n >= 2:
-            cv = StratifiedKFold(n_splits=cv_n, shuffle=True, random_state=42)
-            cv_scores = cross_val_score(self.model, X_train_full, y_train_full, cv=cv, scoring='roc_auc')
-            cv_auc_mean = float(cv_scores.mean())
-            cv_auc_std = float(cv_scores.std())
-        else:
+        # Cross-validation (Skip for very large datasets to save time)
+        if len(X_train_full) > 50000:
+            logger.info("⏩ Skipping cross-validation for massive dataset to save time.")
             cv_auc_mean, cv_auc_std = 0.0, 0.0
+        else:
+            cv_n = min(5, len(X_train_full) // 5)
+            if cv_n >= 2:
+                cv = StratifiedKFold(n_splits=cv_n, shuffle=True, random_state=42)
+                cv_scores = cross_val_score(self.model, X_train_full, y_train_full, cv=cv, scoring='roc_auc')
+                cv_auc_mean = float(cv_scores.mean())
+                cv_auc_std = float(cv_scores.std())
+            else:
+                cv_auc_mean, cv_auc_std = 0.0, 0.0
 
         try:
             auc = roc_auc_score(y_test, y_pred_proba)
