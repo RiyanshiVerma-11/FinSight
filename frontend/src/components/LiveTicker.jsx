@@ -2,8 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Radio, Zap, AlertTriangle, LogIn, LogOut, CreditCard, HeadphonesIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const WS_URL = API_URL.replace('http', 'ws');
+let API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+if (API_URL && !API_URL.startsWith('http')) {
+  API_URL = `https://${API_URL}`;
+}
+const WS_URL = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
 
 const EVENT_ICONS = {
   transaction: CreditCard,

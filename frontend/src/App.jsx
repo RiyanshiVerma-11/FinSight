@@ -19,7 +19,11 @@ import ShapModal from './components/ShapModal';
 import WhatIfPanel from './components/WhatIfPanel';
 import LiveTicker from './components/LiveTicker';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+let API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+if (API_URL && !API_URL.startsWith('http')) {
+  API_URL = `https://${API_URL}`;
+}
+const WS_URL = API_URL.replace('http', 'ws');
 const COLORS = ['#6366f1', '#ec4899', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
 const CHART_COLORS = ['#6366f1', '#a78bfa', '#c084fc', '#e879f9', '#f472b6', '#fb7185'];
 
