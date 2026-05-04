@@ -14,13 +14,11 @@ services:
         sync: false
 
   # Frontend Service (React/Vite)
-  - type: web
+  - type: static
     name: finsight-frontend
-    env: static
-    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    publishPath: ./dist
     envVars:
       - key: VITE_API_URL
         fromService:
