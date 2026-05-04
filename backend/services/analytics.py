@@ -89,43 +89,46 @@ class AnalyticsEngine:
     # ────────────────────────────────────────────
     #  2. Churn Prediction (proper train/test)
     # ────────────────────────────────────────────
-    def predict_churn(self, rfm_df):
-        """Predicts churn with proper train/test split, CV, and SHAP."""
-        rfm_df['churned'] = (rfm_df['recency'] > 60).astype(int)
-        X = rfm_df[['recency', 'frequency', 'monetary']]
-        y = rfm_df['churned']
-        feature_names = ['Recency', 'Frequency', 'Monetary']
+    def predict_churn(self, df, rfm_df):
+        """
+        Predicts churn using a temporal split to avoid data leakage.
+        Trains on past data to predict a 'future' 30-day window.
+        """
+        # 1. Prepare training data with a temporal split (past -> future)
+        X_train_full, y_train_full, feature_names = self._prepare_training_data(df)
 
-        if y.nunique() < 2:
-            rfm_df['churn_probability'] = y.astype(float)
-            drivers = list(zip(feature_names, [0.5, 0.3, 0.2]))
-            metrics = dict(roc_auc=0, f1=0, precision=0, recall=0,
-                           cv_auc_mean=0, cv_auc_std=0, test_size=0, train_size=len(X),
-                           model_comparison=[])
-            shap_data = [{'feature': f, 'importance': v, 'direction': 'unknown'}
-                         for f, v in drivers]
-            return rfm_df, drivers, metrics, shap_data
+        if len(X_train_full) < 10 or y_train_full.nunique() < 2:
+            # Fallback if dataset is too small for a temporal split
+            rfm_df['churn_probability'] = 0.0
+            metrics = dict(roc_auc=0, f1=0, precision=0, recall=0, cv_auc_mean=0, cv_auc_std=0)
+            return rfm_df, [], metrics, []
 
-        # ── Stratified train/test split ──
+        # 2. Stratified split for model evaluation
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
+            X_train_full, y_train_full, test_size=0.25, random_state=42, stratify=y_train_full
         )
+
+        # 3. Train models
         self.model.fit(X_train, y_train)
+        self.xgb_model.fit(X_train, y_train)
 
-        # ── 5-fold Cross-Validation ──
-        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        cv_scores = cross_val_score(self.model, X, y, cv=cv, scoring='roc_auc')
-
-        # Predict on full data for user-level probabilities
-        rfm_df['churn_probability'] = self.model.predict_proba(X)[:, 1]
-
-        # Evaluate on held-out TEST set only
+        # 4. Evaluate on the 'future' test set
         y_pred_proba = self.model.predict_proba(X_test)[:, 1]
         y_pred = self.model.predict(X_test)
+        
+        # Cross-validation
+        cv_n = min(5, len(X_train_full) // 5)
+        if cv_n >= 2:
+            cv = StratifiedKFold(n_splits=cv_n, shuffle=True, random_state=42)
+            cv_scores = cross_val_score(self.model, X_train_full, y_train_full, cv=cv, scoring='roc_auc')
+            cv_auc_mean = float(cv_scores.mean())
+            cv_auc_std = float(cv_scores.std())
+        else:
+            cv_auc_mean, cv_auc_std = 0.0, 0.0
 
         try:
             auc = roc_auc_score(y_test, y_pred_proba)
-        except Exception:
+        except:
             auc = 0.0
 
         metrics = {
@@ -133,48 +136,71 @@ class AnalyticsEngine:
             'f1': float(f1_score(y_test, y_pred, zero_division=0)),
             'precision': float(precision_score(y_test, y_pred, zero_division=0)),
             'recall': float(recall_score(y_test, y_pred, zero_division=0)),
-            'cv_auc_mean': float(cv_scores.mean()),
-            'cv_auc_std': float(cv_scores.std()),
+            'cv_auc_mean': cv_auc_mean,
+            'cv_auc_std': cv_auc_std,
             'test_size': int(len(X_test)),
             'train_size': int(len(X_train)),
         }
 
-        # ── Model Comparison (RF vs XGBoost) ──
-        self.xgb_model.fit(X_train, y_train)
+        # 5. Model Comparison
         xgb_y_pred_proba = self.xgb_model.predict_proba(X_test)[:, 1]
-        xgb_y_pred = self.xgb_model.predict(X_test)
-        
         try:
             xgb_auc = roc_auc_score(y_test, xgb_y_pred_proba)
-        except Exception:
+        except:
             xgb_auc = 0.0
-
-        model_comparison = [
-            {
-                'model': 'Random Forest',
-                'auc': float(auc),
-                'f1': float(metrics['f1']),
-                'precision': float(metrics['precision']),
-                'recall': float(metrics['recall'])
-            },
-            {
-                'model': 'XGBoost',
-                'auc': float(xgb_auc),
-                'f1': float(f1_score(y_test, xgb_y_pred, zero_division=0)),
-                'precision': float(precision_score(y_test, xgb_y_pred, zero_division=0)),
-                'recall': float(recall_score(y_test, xgb_y_pred, zero_division=0))
-            }
+            
+        metrics['model_comparison'] = [
+            {'model': 'Random Forest', 'auc': float(auc), 'f1': metrics['f1']},
+            {'model': 'XGBoost', 'auc': float(xgb_auc), 'f1': float(f1_score(y_test, self.xgb_model.predict(X_test), zero_division=0))}
         ]
 
+        # 6. Apply to CURRENT data for dashboard probabilities
+        # Features for current data use the full rfm_df features
+        current_features = rfm_df[['recency', 'frequency', 'monetary']]
+        rfm_df['churn_probability'] = self.model.predict_proba(current_features)[:, 1]
+
+        # 7. Drivers & SHAP
         importances = self.model.feature_importances_
         drivers = sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)
-
-        # ── SHAP Explainability ──
         shap_data = self._compute_shap(X_test, feature_names)
 
-        metrics['model_comparison'] = model_comparison
-
         return rfm_df, drivers, metrics, shap_data
+
+    def _prepare_training_data(self, df, future_days=30):
+        """
+        Creates features from the 'past' and labels from the 'future'.
+        Helps prevent data leakage by splitting on time.
+        """
+        df = df.copy()
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        max_date = df['timestamp'].max()
+        cutoff = max_date - timedelta(days=future_days)
+
+        # Observation Window (Past)
+        past_df = df[df['timestamp'] < cutoff]
+        # Labeling Window (Future)
+        future_users = df[df['timestamp'] >= cutoff]['user_id'].unique()
+
+        if past_df.empty or len(past_df['user_id'].unique()) < 5:
+            # Fallback if windowing is not possible (e.g. data is too short)
+            return pd.DataFrame(), pd.Series(), []
+
+        # Calculate features using ONLY past data
+        reference_date = cutoff
+        train_rfm = past_df.groupby('user_id').agg({
+            'timestamp': lambda x: (reference_date - x.max()).days,
+            'user_id': 'count',
+            'amount': 'sum'
+        })
+        train_rfm.columns = ['recency', 'frequency', 'monetary']
+        
+        # Label: Churned if NOT in future_users
+        train_rfm['churned'] = (~train_rfm.index.isin(future_users)).astype(int)
+        
+        X = train_rfm[['recency', 'frequency', 'monetary']]
+        y = train_rfm['churned']
+        return X, y, ['Recency', 'Frequency', 'Monetary']
+
 
     def _compute_shap(self, X, feature_names):
         """Compute SHAP values for model explainability."""
@@ -183,7 +209,9 @@ class AnalyticsEngine:
             return [{'feature': f, 'importance': float(v), 'direction': 'unknown'}
                     for f, v in zip(feature_names, self.model.feature_importances_)]
         try:
-            X_sample = X.sample(min(500, len(X)), random_state=42) if len(X) > 500 else X
+            # Use a smaller sample for faster dashboard updates
+            sample_size = min(100, len(X))
+            X_sample = X.sample(sample_size, random_state=42) if len(X) > sample_size else X
             explainer = shap.TreeExplainer(self.model)
             shap_values = explainer.shap_values(X_sample)
 

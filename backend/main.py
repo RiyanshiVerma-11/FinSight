@@ -8,6 +8,8 @@ import time
 import logging
 from services.analytics import AnalyticsEngine
 import numpy as np
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -65,7 +67,7 @@ def _process_dataframe(df: pd.DataFrame) -> dict:
     rfm_results, silhouette = eng.calculate_rfm(df)
 
     # 2. Churn (with proper train/test + SHAP)
-    churn_results, drivers, metrics, shap_data = eng.predict_churn(rfm_results)
+    churn_results, drivers, metrics, shap_data = eng.predict_churn(df, rfm_results)
 
     # 3. Lifecycle
     lifecycle = eng.get_lifecycle_stages(df)
@@ -127,60 +129,70 @@ def _generate_demo_df() -> pd.DataFrame:
 # ──────────────────────────────────────
 #  Warmup
 # ──────────────────────────────────────
+def _warmup_dataset(fname):
+    """Worker function for parallel warmup."""
+    fpath = os.path.join(DATASET_DIR, fname)
+    logger.info(f"⏳ Background processing '{fname}'...")
+    try:
+        t0 = time.time()
+        df = _read_file(fpath)
+        df = _prepare_retail_df(df)
+        required = ['user_id', 'timestamp', 'amount']
+        if not all(c in df.columns for c in required):
+            logger.warning(f"⚠️  Skipping '{fname}' - missing columns")
+            return
+        _results_cache[fname] = _process_dataframe(df)
+        logger.info(f"✅ '{fname}' is now READY in {time.time() - t0:.1f}s")
+    except Exception as e:
+        logger.error(f"❌ Failed to process '{fname}': {e}")
+
+
 def _warmup_caches():
     global _demo_cache
 
-    logger.info("⏳ Pre-training demo data…")
-    t0 = time.time()
+    logger.info("⏳ Starting Parallel Warmup Engine...")
+    
+    # 1. Demo data is high priority
     _demo_cache = _process_dataframe(_generate_demo_df())
-    logger.info(f"✅ Demo data ready in {time.time() - t0:.1f}s")
+    logger.info("✅ Demo data ready.")
 
     if not os.path.exists(DATASET_DIR):
         os.makedirs(DATASET_DIR, exist_ok=True)
         return
 
     files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
-    for fname in files:
-        fpath = os.path.join(DATASET_DIR, fname)
-        logger.info(f"⏳ Pre-training '{fname}'…")
-        t0 = time.time()
-        try:
-            df = _read_file(fpath)
-            df = _prepare_retail_df(df)
-            required = ['user_id', 'timestamp', 'amount']
-            if not all(c in df.columns for c in required):
-                logger.warning(f"⚠️  Skipping '{fname}' – missing columns")
-                continue
-            _results_cache[fname] = _process_dataframe(df)
-            logger.info(f"✅ '{fname}' ready in {time.time() - t0:.1f}s")
-        except Exception as e:
-            logger.error(f"❌ Failed '{fname}': {e}")
+    
+    # 2. Process all datasets in parallel
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        executor.map(_warmup_dataset, files)
 
-    if len(_results_cache) > 1:
-        logger.info("⏳ Pre-training combined (all) dataset…")
-        t0 = time.time()
+    # 3. Combined dataset (Last, as it depends on others being ready or is largest)
+    if len(files) > 1:
+        logger.info("⏳ Processing combined dataset in background...")
         try:
+            t0 = time.time()
             all_dfs = []
             for f in files:
                 try:
                     d = _read_file(os.path.join(DATASET_DIR, f))
                     d = _prepare_retail_df(d)
                     all_dfs.append(d)
-                except Exception:
-                    pass
+                except: pass
             if all_dfs:
                 combined = pd.concat(all_dfs, ignore_index=True)
                 _results_cache["all"] = _process_dataframe(combined)
-                logger.info(f"✅ Combined dataset ready in {time.time() - t0:.1f}s")
+                logger.info(f"✅ All datasets (combined) ready in {time.time() - t0:.1f}s")
         except Exception as e:
             logger.error(f"❌ Combined failed: {e}")
 
-    logger.info(f"🚀 Cache warmed: {len(_results_cache)} dataset(s) + demo data")
+    logger.info("🚀 All local datasets are now cached and ready for instant access.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _warmup_caches()
+    # Start warmup in the background so API is responsive immediately
+    thread = threading.Thread(target=_warmup_caches, daemon=True)
+    thread.start()
     yield
 
 
