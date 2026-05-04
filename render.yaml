@@ -2,7 +2,8 @@ services:
   # Backend Service (FastAPI)
   - type: web
     name: finsight-backend
-    runtime: python
+    env: python
+    plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
@@ -15,10 +16,11 @@ services:
   # Frontend Service (React/Vite)
   - type: web
     name: finsight-frontend
-    runtime: static
+    env: static
+    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    publishPath: ./dist
     envVars:
       - key: VITE_API_URL
         fromService:

@@ -41,3 +41,9 @@ Thumbs.db
 
 # Docker
 .dockerignore
+
+# ML Models & Data (Keep repo light)
+*.pkl
+backend/datasets/*.csv
+backend/datasets/*.xlsx
+!backend/datasets/.gitkeep
