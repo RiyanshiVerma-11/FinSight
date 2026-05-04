@@ -122,21 +122,42 @@ class AnalyticsEngine:
     # ────────────────────────────────────────────
     def predict_churn(self, df, rfm_df):
         """
-        Predicts churn using a temporal split to avoid data leakage.
-        Trains on past data to predict a 'future' 30-day window.
+        Predicts churn. Supports both temporal transactional data and 
+        pre-labeled summary datasets (like Bank Churn).
         """
-        # 1. Prepare training data with a temporal split (past -> future)
-        X_train_full, y_train_full, feature_names = self._prepare_training_data(df)
+        # 1. Prepare Features
+        # We merge RFM features with any additional numeric features from the original df
+        merged_df = rfm_df.merge(
+            df.groupby('user_id').first().reset_index(), 
+            on='user_id', 
+            suffixes=('', '_raw')
+        )
+        
+        # Identify numeric features for training
+        exclude = ['user_id', 'target_churn', 'churn_probability', 'cluster', 'rfm_score', 'r_score', 'f_score', 'm_score', 'revenue_at_risk', 'predicted_ltv']
+        feature_cols = [c for c in merged_df.select_dtypes(include=[np.number]).columns if c not in exclude]
+        
+        # 2. Detect Ground Truth
+        if 'target_churn' in df.columns:
+            logger.info(f"🎯 Labeled dataset detected. Using 'target_churn' as ground truth. Features: {feature_cols}")
+            X_train_full = merged_df[feature_cols].fillna(0)
+            y_train_full = df.groupby('user_id')['target_churn'].max().reindex(merged_df['user_id']).fillna(0).astype(int)
+            feature_names = [c.replace('_', ' ').title() for c in feature_cols]
+        else:
+            # Fallback to temporal split for transactional data
+            X_train_full, y_train_full, feature_names = self._prepare_training_data(df)
 
-        if len(X_train_full) < 10 or y_train_full.nunique() < 2:
-            # Fallback if dataset is too small for a temporal split
+        if len(X_train_full) < 5 or y_train_full.nunique() < 2:
+            # Fallback if dataset is too small or has no variance
             rfm_df['churn_probability'] = 0.0
-            metrics = dict(roc_auc=0, f1=0, precision=0, recall=0, cv_auc_mean=0, cv_auc_std=0)
+            rfm_df['revenue_at_risk'] = 0.0
+            rfm_df['predicted_ltv'] = rfm_df['monetary']
+            metrics = dict(roc_auc=0, f1=0, precision=0, recall=0, cv_auc_mean=0, cv_auc_std=0, train_size=len(X_train_full), test_size=0)
             return rfm_df, [], metrics, []
 
-        # 2. Stratified split for model evaluation
+        # 3. Stratified split for model evaluation
         X_train, X_test, y_train, y_test = train_test_split(
-            X_train_full, y_train_full, test_size=0.25, random_state=42, stratify=y_train_full
+            X_train_full, y_train_full, test_size=0.2, random_state=42, stratify=y_train_full
         )
 
         # 3. Train models
@@ -186,8 +207,14 @@ class AnalyticsEngine:
         ]
 
         # 6. Apply to CURRENT data for dashboard probabilities
-        current_features = rfm_df[['recency', 'frequency', 'monetary']]
+        # CRITICAL: Must use EXACT same features as training to avoid ValueError
+        current_features = merged_df[feature_cols if 'target_churn' in df.columns else ['recency', 'frequency', 'monetary']].fillna(0)
         rfm_df['churn_probability'] = self.model.predict_proba(current_features)[:, 1]
+        
+        # Preserve all features in rfm_df for per-user SHAP and what-if analysis
+        for col in feature_cols:
+            if col not in rfm_df.columns:
+                rfm_df[col] = merged_df[col]
 
         # Revenue at Risk
         rfm_df['revenue_at_risk'] = rfm_df['monetary'] * rfm_df['churn_probability']
@@ -310,8 +337,15 @@ class AnalyticsEngine:
             return None
 
         user = user_row.iloc[0]
-        features = user[['recency', 'frequency', 'monetary']].values.reshape(1, -1)
         feature_names = self._feature_names or ['Recency', 'Frequency', 'Monetary']
+        
+        # Match features from the model to the user row
+        try:
+            features = user[[f.lower().replace(' ', '_') for f in feature_names]].values.reshape(1, -1)
+        except:
+            # Fallback for naming mismatches
+            features = user[['recency', 'frequency', 'monetary']].values.reshape(1, -1)
+            feature_names = ['Recency', 'Frequency', 'Monetary']
 
         result = {
             'user_id': str(user_id),

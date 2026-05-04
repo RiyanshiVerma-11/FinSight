@@ -396,30 +396,34 @@ h2 {
   border-spacing: 0;
 }
 .data-table thead th {
-  padding: 0.85rem 1rem;
+  padding: 1rem 1.25rem;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-align: left;
-  border-bottom: 2px solid var(--border);
+  border-bottom: 2px solid var(--border-light);
   background: var(--bg-input);
 }
-.data-table thead th:first-child { border-radius: var(--radius-md) 0 0 0; }
-.data-table thead th:last-child { border-radius: 0 var(--radius-md) 0 0; }
+.data-table thead th:first-child { border-radius: var(--radius-lg) 0 0 0; }
+.data-table thead th:last-child { border-radius: 0 var(--radius-lg) 0 0; }
 
 .data-table tbody tr {
-  transition: background 0.15s ease;
+  transition: all 0.2s ease;
 }
 .data-table tbody tr:hover {
-  background: rgba(99,102,241,0.03);
+  background: rgba(99,102,241,0.04);
+  transform: scale(1.002);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 .data-table tbody td {
-  padding: 0.85rem 1rem;
+  padding: 1.15rem 1.25rem;
   font-size: 0.9rem;
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
 }
 
 /* Churn bar */

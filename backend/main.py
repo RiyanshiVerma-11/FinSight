@@ -40,28 +40,86 @@ def _read_file(path: str) -> pd.DataFrame:
 
 
 def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalise Online Retail II format, keeping Description for product mix."""
-    mapping = {
-        'Customer ID': 'user_id',
-        'InvoiceDate': 'timestamp',
-        'Price': 'unit_price',
-        'Quantity': 'quantity',
+    """Normalise various retail formats into the standard internal schema."""
+    # 1. Flexible Column Mapping
+    column_variants = {
+        'user_id': ['Customer ID', 'CustomerID', 'Customer_ID', 'User ID', 'user', 'id', 'user_id'],
+        'timestamp': ['InvoiceDate', 'Date', 'timestamp', 'time', 'Order Date', 'date', 'Invoice Date'],
+        'amount': ['Price', 'Total', 'Amount', 'revenue', 'sum', 'amount', 'Total Price', 'TotalPrice'],
+        'unit_price': ['Price', 'UnitPrice', 'Unit Price', 'price', 'unit_price'],
+        'quantity': ['Quantity', 'Qty', 'quantity', 'Quantity']
     }
-    if 'Customer ID' in df.columns:
-        # Keep Description column if present
-        if 'Description' in df.columns:
-            mapping['Description'] = 'description'
-        df = df.rename(columns=mapping)
-        df['unit_price'] = pd.to_numeric(df['unit_price'], errors='coerce')
-        df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce')
-        df['amount'] = df['unit_price'] * df['quantity']
-        df = df.dropna(subset=['user_id', 'unit_price', 'quantity'])
-        df = df[df['quantity'] > 0]
-        df['user_id'] = (
-            pd.to_numeric(df['user_id'], errors='coerce')
-            .fillna(0).astype(int).astype(str)
-        )
+    
+    # Apply mapping
+    current_cols = {c.lower().replace(' ', '').replace('_', ''): c for c in df.columns}
+    found_mapping = {}
+    
+    for target, variants in column_variants.items():
+        for v in variants:
+            v_norm = v.lower().replace(' ', '').replace('_', '')
+            if v_norm in current_cols:
+                found_mapping[current_cols[v_norm]] = target
+                break
+    
+    if found_mapping:
+        df = df.rename(columns=found_mapping)
+
+    # 1.5 Column Mapping for Bank Churn / Summary datasets
+    summary_mapping = {
+        'credit_score': 'credit_score',
+        'balance': 'monetary',
+        'products_number': 'frequency',
+        'tenure': 'tenure_months',
+        'estimated_salary': 'monetary_velocity',
+        'active_member': 'is_active',
+        'churn': 'target_churn'
+    }
+    
+    for v, target in summary_mapping.items():
+        v_norm = v.lower().replace(' ', '').replace('_', '')
+        if v_norm in current_cols:
+            df = df.rename(columns={current_cols[v_norm]: target})
+            # Also map to standard columns if missing
+            if target == 'monetary' and 'amount' not in df.columns:
+                df['amount'] = df[target]
+
+    # Handle missing timestamps for summary data (create dummy based on tenure)
+    if 'timestamp' not in df.columns and 'tenure_months' in df.columns:
+        # Create dummy timestamps so RFM pipeline doesn't crash
+        now = pd.Timestamp.now()
+        df['timestamp'] = now - pd.to_timedelta(df['tenure_months'].fillna(0) * 30, unit='D')
+        if 'amount' not in df.columns:
+            df['amount'] = df.get('monetary', 0)
+
+    # 2. Description column for Product Mix
+    desc_cols = ['Description', 'description', 'Product', 'product', 'ProductDescription']
+    for c in desc_cols:
+        if c in df.columns and c != 'description':
+            df = df.rename(columns={c: 'description'})
+            break
+
+    # 3. Handle required columns
+    if 'user_id' in df.columns:
+        # Convert user_id to string and remove nulls
+        df['user_id'] = pd.to_numeric(df['user_id'], errors='coerce').fillna(0).astype(int).astype(str)
         df = df[df['user_id'] != '0']
+
+    if 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        df = df.dropna(subset=['timestamp'])
+
+    # 4. Calculate amount if missing but price/qty exist
+    if 'amount' not in df.columns and 'unit_price' in df.columns and 'quantity' in df.columns:
+        df['unit_price'] = pd.to_numeric(df['unit_price'], errors='coerce').fillna(0)
+        df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
+        df['amount'] = df['unit_price'] * df['quantity']
+    elif 'amount' in df.columns:
+        df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(0)
+
+    # 5. Final Cleanup
+    required = ['user_id', 'timestamp', 'amount']
+    df = df.dropna(subset=[c for c in required if c in df.columns])
+    
     return df
 
 
@@ -302,17 +360,32 @@ async def get_demo_data():
 @app.post("/analyze")
 async def analyze_data(file: UploadFile = File(...)):
     if not file.filename.endswith(('.csv', '.xlsx')):
-        raise HTTPException(status_code=400, detail="Only CSV or XLSX files")
+        raise HTTPException(status_code=400, detail="Only CSV or XLSX files are supported.")
+    
     contents = await file.read()
-    if file.filename.endswith('.csv'):
-        df = pd.read_csv(io.BytesIO(contents), encoding='ISO-8859-1')
-    else:
-        df = pd.read_excel(io.BytesIO(contents))
+    try:
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(io.BytesIO(contents), encoding='ISO-8859-1')
+        else:
+            df = pd.read_excel(io.BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read file: {str(e)}")
+
     df = _prepare_retail_df(df)
     required = ['user_id', 'timestamp', 'amount']
-    if not all(c in df.columns for c in required):
-        raise HTTPException(status_code=400, detail=f"Missing columns. Found: {list(df.columns)}")
-    return _process_dataframe(df, cache_key="upload")
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Missing required data columns: {missing}. Found: {list(df.columns)}. "
+                   "Please ensure your file has Customer ID, Date, and Amount/Price columns."
+        )
+    
+    try:
+        return _process_dataframe(df, cache_key="upload")
+    except Exception as e:
+        logger.error(f"Analysis failed for uploaded file: {e}")
+        raise HTTPException(status_code=500, detail=f"Analytics engine failed: {str(e)}")
 
 
 # ──────────────────────────────────────
