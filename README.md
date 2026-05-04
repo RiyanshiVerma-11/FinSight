@@ -72,7 +72,7 @@
 ## 🧪 Technical Architecture
 
 ```mermaid
-graph TB
+graph LR
     %% Nodes styling
     classDef frontend fill:#eef2ff,stroke:#6366f1,stroke-width:2px,color:#1e293b
     classDef backend fill:#f8fafc,stroke:#475569,stroke-width:2px,color:#1e293b
@@ -87,11 +87,11 @@ graph TB
         L[Live Ticker]
     end
 
-    subgraph COM ["Communication Layer"]
+    subgraph COM ["Communication"]
         API_REQ[REST API + WebSocket]
     end
 
-    subgraph B_API ["Backend API (FastAPI v3.0)"]
+    subgraph B_API ["Backend API"]
         direction LR
         AN["/analyze"]
         US["/user-shap"]
@@ -101,7 +101,7 @@ graph TB
     end
 
     subgraph AE ["Analytics Engine"]
-        direction TB
+        direction LR
         RFM[Dynamic RFM]
         CM[Churn Model]
         SL[SHAP Local]
@@ -111,16 +111,16 @@ graph TB
 
     subgraph BS ["Backend Services"]
         direction LR
-        LLM[LLM Engine<br/>Groq/Llama]
-        DG[Data Generator<br/>WebSocket]
-        MV[Model Versioning<br/>.pkl timestamped]
+        LLM[LLM Engine]
+        DG[Data Generator]
+        MV[Model Versioning]
     end
 
     %% Connections
     UI --> API_REQ
     API_REQ --> B_API
     B_API --> AE
-    AE <--> BS
+    AE --> BS
 
     %% Applying styles
     class D,S,W,L,UI frontend
