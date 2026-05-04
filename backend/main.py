@@ -184,21 +184,6 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     return {"summary": summary, "users": user_data}
 
 
-def _generate_demo_df() -> pd.DataFrame:
-    np.random.seed(42)
-    n_users, n_events = 200, 2000
-    user_ids = [f"USR_{i:03d}" for i in range(n_users)]
-    products = ['Premium Plan', 'Basic Plan', 'Add-on Pack', 'Enterprise', 'Free Trial',
-                'Wallet Top-up', 'Bill Pay', 'Investment']
-    return pd.DataFrame({
-        'user_id': np.random.choice(user_ids, n_events),
-        'timestamp': [
-            pd.Timestamp('2024-01-01') + pd.Timedelta(days=np.random.randint(0, 120))
-            for _ in range(n_events)
-        ],
-        'amount': np.random.uniform(10, 500, n_events),
-        'description': np.random.choice(products, n_events),
-    })
 
 
 # ──────────────────────────────────────
@@ -223,44 +208,21 @@ def _warmup_dataset(fname):
 
 
 def _warmup_caches():
-    global _demo_cache
-
-    logger.info("⏳ Starting Parallel Warmup Engine...")
+    logger.info("⏳ Starting Warmup Engine (Sequential)...")
     
-    # 1. Demo data is high priority
-    _demo_cache = _process_dataframe(_generate_demo_df(), cache_key="demo")
-    logger.info("✅ Demo data ready.")
-
     if not os.path.exists(DATASET_DIR):
         os.makedirs(DATASET_DIR, exist_ok=True)
         return
 
     files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
     
-    # 2. Process all datasets in parallel
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        executor.map(_warmup_dataset, files)
+    # 2. Process all datasets SEQUENTIALLY to save RAM on free tier
+    logger.info(f"⏳ Processing {len(files)} datasets sequentially...")
+    for fname in files:
+        _warmup_dataset(fname)
 
-    # 3. Combined dataset (Last, as it depends on others being ready or is largest)
-    if len(files) > 1:
-        logger.info("⏳ Processing combined dataset in background...")
-        try:
-            t0 = time.time()
-            all_dfs = []
-            for f in files:
-                try:
-                    d = _read_file(os.path.join(DATASET_DIR, f))
-                    d = _prepare_retail_df(d)
-                    all_dfs.append(d)
-                except: pass
-            if all_dfs:
-                combined = pd.concat(all_dfs, ignore_index=True)
-                _results_cache["all"] = _process_dataframe(combined, cache_key="all")
-                logger.info(f"✅ All datasets (combined) ready in {time.time() - t0:.1f}s")
-        except Exception as e:
-            logger.error(f"❌ Combined failed: {e}")
-
-    logger.info("🚀 All local datasets are now cached and ready for instant access.")
+    # 3. Skip combined dataset on free tier (too much RAM)
+    logger.info("✅ All local datasets are now cached and ready for access.")
 
 
 @asynccontextmanager
@@ -348,13 +310,29 @@ async def _analyze_all_live():
 
 
 @app.get("/demo-data")
-async def get_demo_data():
-    global _demo_cache
-    if _demo_cache:
-        logger.info("⚡ Serving demo data from cache")
-        return _demo_cache
-    _demo_cache = _process_dataframe(_generate_demo_df(), cache_key="demo")
-    return _demo_cache
+async def get_default_data():
+    """Returns the first available dataset as the default dashboard data."""
+    # 1. Check if any real dataset is already cached
+    if _results_cache:
+        first_key = list(_results_cache.keys())[0]
+        logger.info(f"⚡ Serving '{first_key}' as default dashboard data")
+        return _results_cache[first_key]
+
+    # 2. If not cached but exists on disk, process it
+    files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
+    if files:
+        fname = files[0]
+        fpath = os.path.join(DATASET_DIR, fname)
+        df = _read_file(fpath)
+        df = _prepare_retail_df(df)
+        # Sample for speed if needed
+        if len(df) > 100000:
+            df = df.sample(100000, random_state=42).sort_values('timestamp')
+        result = _process_dataframe(df, cache_key=fname)
+        _results_cache[fname] = result
+        return result
+
+    raise HTTPException(status_code=404, detail="No datasets available. Please upload a file.")
 
 
 @app.post("/analyze")

@@ -50,15 +50,22 @@ class AnalyticsEngine:
     # ────────────────────────────────────────────
     def calculate_rfm(self, df):
         """Dynamic RFM with Inter-Purchase Interval & Monetary Velocity."""
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        reference_date = df['timestamp'].max() + timedelta(days=1)
-
+        # 1. Ensure absolute datetime conversion
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        df = df.dropna(subset=['timestamp'])
+        
+        reference_date = df['timestamp'].max() + pd.Timedelta(days=1)
+        
+        # 2. Vectorized base RFM (no slow lambdas)
         rfm = df.groupby('user_id').agg({
-            'timestamp': lambda x: (reference_date - x.max()).days,
-            'user_id': 'count',
-            'amount': 'sum'
+            'timestamp': 'max',
+            'amount': ['count', 'sum']
         })
-        rfm.columns = ['recency', 'frequency', 'monetary']
+        rfm.columns = ['last_purchase', 'frequency', 'monetary']
+        
+        # 3. Explicitly convert recency to numeric days
+        rfm['recency'] = (reference_date - rfm['last_purchase']).dt.days.astype(float)
+        rfm = rfm.drop(columns=['last_purchase'])
 
         # ── Optimized Dynamic Feature: Inter-Purchase Interval ──
         # Vectorized approach: sort, diff, then group
@@ -78,8 +85,7 @@ class AnalyticsEngine:
 
         # ── Dynamic Feature: Monetary Velocity ──
         first_seen = df.groupby('user_id')['timestamp'].min()
-        account_age = (reference_date - first_seen).dt.days.clip(lower=1)
-        rfm['account_age_days'] = account_age
+        rfm['account_age_days'] = (reference_date - first_seen).dt.days.astype(float).clip(lower=1)
         rfm['monetary_velocity'] = rfm['monetary'] / rfm['account_age_days']
 
         # Quantile-based scoring (1-5)
