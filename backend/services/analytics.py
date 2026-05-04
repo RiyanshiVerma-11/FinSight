@@ -10,6 +10,9 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from datetime import datetime, timedelta
 import logging
+import os
+import pickle
+import json
 
 try:
     import shap
@@ -36,12 +39,17 @@ class AnalyticsEngine:
             self.xgb_model = xgb.XGBClassifier(n_estimators=100, random_state=42, learning_rate=0.1, max_depth=5)
         else:
             self.xgb_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
+        self._explainer = None
+        self._feature_names = []
+        self._last_rfm = None
+        self._model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'models')
+        os.makedirs(self._model_dir, exist_ok=True)
 
     # ────────────────────────────────────────────
     #  1. RFM Analysis & Clustering
     # ────────────────────────────────────────────
     def calculate_rfm(self, df):
-        """Calculates RFM scores for users using Quantile-based scoring (1-5)."""
+        """Dynamic RFM with Inter-Purchase Interval & Monetary Velocity."""
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         reference_date = df['timestamp'].max() + timedelta(days=1)
 
@@ -51,6 +59,28 @@ class AnalyticsEngine:
             'amount': 'sum'
         })
         rfm.columns = ['recency', 'frequency', 'monetary']
+
+        # ── Dynamic Feature: Inter-Purchase Interval ──
+        def calc_ipi(group):
+            ts = group['timestamp'].sort_values()
+            if len(ts) < 2:
+                return pd.Series({'ipi_median': 0.0, 'ipi_std': 0.0})
+            diffs = ts.diff().dropna().dt.days
+            return pd.Series({'ipi_median': float(diffs.median()), 'ipi_std': float(diffs.std()) if len(diffs) > 1 else 0.0})
+
+        ipi_data = df.groupby('user_id').apply(calc_ipi).reset_index()
+        ipi_data.set_index('user_id', inplace=True)
+        rfm = rfm.join(ipi_data)
+
+        # Recency Deviation: how overdue is this user vs their own pattern
+        rfm['recency_deviation'] = rfm['recency'] - rfm['ipi_median']
+        rfm['recency_deviation'] = rfm['recency_deviation'].clip(lower=0)
+
+        # ── Dynamic Feature: Monetary Velocity ──
+        first_seen = df.groupby('user_id')['timestamp'].min()
+        account_age = (reference_date - first_seen).dt.days.clip(lower=1)
+        rfm['account_age_days'] = account_age
+        rfm['monetary_velocity'] = rfm['monetary'] / rfm['account_age_days']
 
         # Quantile-based scoring (1-5)
         rfm['r_score'] = pd.qcut(rfm['recency'], 5, labels=[5, 4, 3, 2, 1])
@@ -84,6 +114,7 @@ class AnalyticsEngine:
             logger.error(f"Error calculating silhouette score: {e}")
             sil_score = 0.0
 
+        self._last_rfm = rfm.reset_index()
         return rfm.reset_index(), sil_score
 
     # ────────────────────────────────────────────
@@ -155,14 +186,27 @@ class AnalyticsEngine:
         ]
 
         # 6. Apply to CURRENT data for dashboard probabilities
-        # Features for current data use the full rfm_df features
         current_features = rfm_df[['recency', 'frequency', 'monetary']]
         rfm_df['churn_probability'] = self.model.predict_proba(current_features)[:, 1]
+
+        # Revenue at Risk
+        rfm_df['revenue_at_risk'] = rfm_df['monetary'] * rfm_df['churn_probability']
 
         # 7. Drivers & SHAP
         importances = self.model.feature_importances_
         drivers = sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)
+        self._feature_names = feature_names
         shap_data = self._compute_shap(X_test, feature_names)
+
+        # 8. Cache explainer for per-user SHAP
+        if HAS_SHAP:
+            try:
+                self._explainer = shap.TreeExplainer(self.model)
+            except Exception:
+                self._explainer = None
+
+        # 9. Model Versioning
+        self._save_model_version(metrics)
 
         return rfm_df, drivers, metrics, shap_data
 
@@ -215,40 +259,214 @@ class AnalyticsEngine:
             explainer = shap.TreeExplainer(self.model)
             shap_values = explainer.shap_values(X_sample)
 
+            # Handle different SHAP output formats (list for multi-class/binary, array for regression/some models)
             if isinstance(shap_values, list):
-                shap_vals = shap_values[1]
+                # For binary classification, index 1 is usually the positive class (Churn)
+                shap_vals = np.array(shap_values[1])
+            elif len(shap_values.shape) == 3:
+                # Some SHAP versions return (n_samples, n_features, n_classes)
+                shap_vals = shap_values[:, :, 1]
             else:
                 shap_vals = shap_values
+
+            # Ensure we have a 2D array (samples, features)
+            if len(shap_vals.shape) != 2:
+                raise ValueError(f"Unexpected SHAP shape: {shap_vals.shape}")
 
             mean_abs = np.abs(shap_vals).mean(axis=0)
             mean_dir = shap_vals.mean(axis=0)
 
             result = []
             for i, f in enumerate(feature_names):
+                # Ensure we are extracting a scalar value
+                val_abs = float(mean_abs[i].item() if hasattr(mean_abs[i], 'item') else mean_abs[i])
+                val_dir = float(mean_dir[i].item() if hasattr(mean_dir[i], 'item') else mean_dir[i])
+                
                 result.append({
                     'feature': f,
-                    'importance': float(mean_abs[i]),
-                    'direction': 'increases_churn' if mean_dir[i] > 0 else 'decreases_churn'
+                    'importance': val_abs,
+                    'direction': 'increases_churn' if val_dir > 0 else 'decreases_churn'
                 })
             result.sort(key=lambda x: x['importance'], reverse=True)
             return result
         except Exception as e:
             logger.error(f"SHAP computation error: {e}")
+            # Fallback to feature importances
+            importances = self.model.feature_importances_
             return [{'feature': f, 'importance': float(v), 'direction': 'unknown'}
-                    for f, v in zip(feature_names, self.model.feature_importances_)]
+                    for f, v in zip(feature_names, importances)]
+
+    # ────────────────────────────────────────────
+    #  Per-User Local SHAP Explainability
+    # ────────────────────────────────────────────
+    def compute_user_shap(self, user_id, rfm_df):
+        """Compute local SHAP values for a single user — the 'WHY' behind their score."""
+        user_row = rfm_df[rfm_df['user_id'] == str(user_id)]
+        if user_row.empty:
+            return None
+
+        user = user_row.iloc[0]
+        features = user[['recency', 'frequency', 'monetary']].values.reshape(1, -1)
+        feature_names = self._feature_names or ['Recency', 'Frequency', 'Monetary']
+
+        result = {
+            'user_id': str(user_id),
+            'churn_probability': float(user.get('churn_probability', 0)),
+            'revenue_at_risk': float(user.get('revenue_at_risk', 0)),
+            'segment': str(user.get('segment', 'Unknown')),
+            'top_drivers': [],
+            'explanation_summary': ''
+        }
+
+        if self._explainer is not None:
+            try:
+                sv = self._explainer.shap_values(features)
+                vals = sv[1][0] if isinstance(sv, list) else sv[0]
+                drivers = []
+                for i, fname in enumerate(feature_names):
+                    v = float(vals[i])
+                    direction = 'increases_churn' if v > 0 else 'decreases_churn'
+                    fval = float(features[0][i])
+                    if direction == 'increases_churn':
+                        expl = f"High {fname} ({fval:.0f}) is pushing churn risk UP by {abs(v):.3f}"
+                    else:
+                        expl = f"{fname} ({fval:.0f}) is helping RETAIN this user (impact: {abs(v):.3f})"
+                    drivers.append({'feature': fname, 'shap_value': v, 'direction': direction, 'explanation': expl})
+                drivers.sort(key=lambda x: abs(x['shap_value']), reverse=True)
+                result['top_drivers'] = drivers[:3]
+                top = drivers[0]
+                prob = result['churn_probability']
+                result['explanation_summary'] = (
+                    f"This user has {prob*100:.0f}% churn risk primarily because "
+                    f"{top['explanation'].lower()}"
+                )
+            except Exception as e:
+                logger.error(f"Per-user SHAP error: {e}")
+                result['top_drivers'] = [{'feature': f, 'shap_value': 0, 'direction': 'unknown', 'explanation': 'SHAP unavailable'} for f in feature_names]
+        else:
+            result['explanation_summary'] = 'SHAP explainer not available'
+
+        return result
+
+    # ────────────────────────────────────────────
+    #  What-If Counterfactual Simulation
+    # ────────────────────────────────────────────
+    def simulate_whatif(self, rfm_df, segment, feature, delta_pct):
+        """Simulate: 'If we change <feature> by <delta_pct>% for <segment>, what happens to churn?'"""
+        feature_lower = feature.lower()
+        if feature_lower not in ['recency', 'frequency', 'monetary']:
+            return {'error': f'Invalid feature: {feature}'}
+
+        seg_mask = rfm_df['segment'] == segment
+        if seg_mask.sum() == 0:
+            return {'error': f'Segment not found: {segment}'}
+
+        seg_data = rfm_df[seg_mask].copy()
+        original_churn = float(seg_data['churn_probability'].mean())
+        original_revenue_risk = float(seg_data['revenue_at_risk'].sum())
+
+        # Apply counterfactual
+        sim_data = seg_data.copy()
+        multiplier = 1 + (delta_pct / 100.0)
+        sim_data[feature_lower] = sim_data[feature_lower] * multiplier
+
+        sim_features = sim_data[['recency', 'frequency', 'monetary']]
+        sim_probs = self.model.predict_proba(sim_features)[:, 1]
+        simulated_churn = float(sim_probs.mean())
+        sim_revenue_risk = float((sim_data['monetary'] * sim_probs).sum())
+
+        reduction = original_churn - simulated_churn
+        reduction_pct = (reduction / max(original_churn, 0.001)) * 100
+
+        direction = 'increase' if delta_pct > 0 else 'decrease'
+        if reduction > 0:
+            rec = f"A {abs(delta_pct):.0f}% {direction} in {feature} for '{segment}' could reduce churn by {reduction_pct:.1f}%, protecting ${original_revenue_risk - sim_revenue_risk:,.0f} in revenue."
+        else:
+            rec = f"A {abs(delta_pct):.0f}% {direction} in {feature} for '{segment}' may increase churn by {abs(reduction_pct):.1f}%. Not recommended."
+
+        return {
+            'segment': segment,
+            'feature_modified': feature,
+            'delta_pct': delta_pct,
+            'original_churn': round(original_churn, 4),
+            'simulated_churn': round(simulated_churn, 4),
+            'churn_reduction_pct': round(reduction_pct, 2),
+            'users_affected': int(seg_mask.sum()),
+            'revenue_protected': round(max(original_revenue_risk - sim_revenue_risk, 0), 2),
+            'recommendation': rec
+        }
+
+    # ────────────────────────────────────────────
+    #  Revenue-at-Risk Summary
+    # ────────────────────────────────────────────
+    def get_revenue_at_risk(self, rfm_df):
+        """Total and per-segment revenue at risk."""
+        total = float(rfm_df['revenue_at_risk'].sum()) if 'revenue_at_risk' in rfm_df.columns else 0
+        by_segment = []
+        if 'revenue_at_risk' in rfm_df.columns:
+            seg_rar = rfm_df.groupby('segment').agg(
+                revenue_at_risk=('revenue_at_risk', 'sum'),
+                users=('user_id', 'count'),
+                avg_churn=('churn_probability', 'mean')
+            ).reset_index()
+            by_segment = seg_rar.to_dict(orient='records')
+        return {'total': round(total, 2), 'by_segment': by_segment}
+
+    # ────────────────────────────────────────────
+    #  Model Versioning
+    # ────────────────────────────────────────────
+    def _save_model_version(self, metrics):
+        """Save trained model with timestamp-based versioning."""
+        try:
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            fname = f'churn_model_v{ts}.pkl'
+            fpath = os.path.join(self._model_dir, fname)
+            with open(fpath, 'wb') as f:
+                pickle.dump({'model': self.model, 'scaler': self.scaler, 'metrics': metrics, 'features': self._feature_names}, f)
+            # Keep only last 5 versions
+            versions = sorted([f for f in os.listdir(self._model_dir) if f.endswith('.pkl')])
+            for old in versions[:-5]:
+                os.remove(os.path.join(self._model_dir, old))
+            logger.info(f"Model saved: {fname}")
+        except Exception as e:
+            logger.error(f"Model save error: {e}")
+
+    def list_model_versions(self):
+        """List all saved model versions."""
+        versions = []
+        if os.path.exists(self._model_dir):
+            for f in sorted(os.listdir(self._model_dir)):
+                if f.endswith('.pkl'):
+                    fpath = os.path.join(self._model_dir, f)
+                    ts = f.replace('churn_model_v', '').replace('.pkl', '')
+                    try:
+                        with open(fpath, 'rb') as fp:
+                            data = pickle.load(fp)
+                        m = data.get('metrics', {})
+                    except:
+                        m = {}
+                    versions.append({'version': ts, 'timestamp': ts, 'filename': f, 'metrics': m})
+        return versions
 
     # ────────────────────────────────────────────
     #  3. Segment-Level Churn Breakdown
     # ────────────────────────────────────────────
     def get_segment_churn(self, rfm_df):
-        """Churn rate & stats per RFM segment."""
-        stats = rfm_df.groupby('segment').agg(
-            avg_churn=('churn_probability', 'mean'),
-            count=('user_id', 'count'),
-            avg_monetary=('monetary', 'mean'),
-            avg_recency=('recency', 'mean'),
-            avg_frequency=('frequency', 'mean'),
-        ).reset_index()
+        """Churn rate & stats per RFM segment with revenue at risk."""
+        agg_dict = {
+            'avg_churn': ('churn_probability', 'mean'),
+            'count': ('user_id', 'count'),
+            'avg_monetary': ('monetary', 'mean'),
+            'avg_recency': ('recency', 'mean'),
+            'avg_frequency': ('frequency', 'mean'),
+        }
+        if 'revenue_at_risk' in rfm_df.columns:
+            agg_dict['total_revenue_at_risk'] = ('revenue_at_risk', 'sum')
+        if 'monetary_velocity' in rfm_df.columns:
+            agg_dict['avg_monetary_velocity'] = ('monetary_velocity', 'mean')
+        if 'recency_deviation' in rfm_df.columns:
+            agg_dict['avg_recency_deviation'] = ('recency_deviation', 'mean')
+        stats = rfm_df.groupby('segment').agg(**agg_dict).reset_index()
         return stats.to_dict(orient='records')
 
     # ────────────────────────────────────────────

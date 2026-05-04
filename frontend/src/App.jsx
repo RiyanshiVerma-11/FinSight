@@ -2,22 +2,24 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
 import {
   Users, TrendingDown, TrendingUp, Lightbulb,
   Upload, Activity, ShieldAlert, CheckCircle, RefreshCw,
   Database, BarChart3, Target, Sparkles, Download,
-  FlaskConical, ShoppingBag, CalendarRange, Brain
+  FlaskConical, ShoppingBag, CalendarRange, Brain,
+  DollarSign, Zap
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import ShapModal from './components/ShapModal';
+import WhatIfPanel from './components/WhatIfPanel';
+import LiveTicker from './components/LiveTicker';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const COLORS = ['#6366f1', '#ec4899', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
 const CHART_COLORS = ['#6366f1', '#a78bfa', '#c084fc', '#e879f9', '#f472b6', '#fb7185'];
 
-/* ────── Tooltips ────── */
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -28,7 +30,6 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-/* ────── Stat Card ────── */
 const StatCard = ({ icon: Icon, iconClass, cardClass, label, value, trend, trendClass, trendIcon: TrendIcon, delay = 0 }) => (
   <motion.div className={`card stat-card ${cardClass}`} style={{ gridColumn: 'span 3' }}
     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay, duration: 0.4 }}>
@@ -39,7 +40,6 @@ const StatCard = ({ icon: Icon, iconClass, cardClass, label, value, trend, trend
   </motion.div>
 );
 
-/* ────── Section Wrapper ────── */
 const Section = ({ children, span = 12, delay = 0, style = {} }) => (
   <motion.div className="card" style={{ gridColumn: `span ${span}`, ...style }}
     initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay, duration: 0.5 }}>
@@ -47,23 +47,24 @@ const Section = ({ children, span = 12, delay = 0, style = {} }) => (
   </motion.div>
 );
 
-/* ────── Cohort Heatmap Cell Color ────── */
 const retentionColor = (val) => {
   if (val >= 80) return '#dcfce7';
   if (val >= 60) return '#bbf7d0';
   if (val >= 40) return '#fef9c3';
   if (val >= 20) return '#fed7aa';
-  if (val > 0)  return '#fecaca';
+  if (val > 0) return '#fecaca';
   return '#f1f5f9';
 };
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [datasets, setDatasets] = useState([]);
   const [selectedDataset, setSelectedDataset] = useState("");
+  const [shapUser, setShapUser] = useState(null);
+  const [llmHypotheses, setLlmHypotheses] = useState(null);
+  const [llmLoading, setLlmLoading] = useState(false);
 
   const fetchDatasets = async () => {
     try { setDatasets((await axios.get(`${API_URL}/list-datasets`)).data.datasets || []); }
@@ -90,6 +91,14 @@ function App() {
     catch { alert("Error processing file."); }
     finally { setUploading(false); }
   };
+  const fetchLlmHypotheses = async () => {
+    setLlmLoading(true);
+    try {
+      const r = await axios.get(`${API_URL}/llm-hypotheses`);
+      setLlmHypotheses(r.data);
+    } catch { setLlmHypotheses(null); }
+    setLlmLoading(false);
+  };
 
   const exportCSV = () => {
     if (!data?.users?.length) return;
@@ -111,7 +120,6 @@ function App() {
     </div>
   );
 
-  /* ── Derived ── */
   const s = data?.summary;
   const segmentData = s?.segments ? Object.entries(s.segments).map(([name, value]) => ({ name, value })) : [];
   const lifecycleData = s?.lifecycle_stages ? Object.entries(s.lifecycle_stages).map(([name, value]) => ({ name, value })) : [];
@@ -119,15 +127,18 @@ function App() {
   const shapData = s?.shap_data || [];
   const cohorts = s?.cohort_data || [];
   const productMix = s?.product_mix;
+  const rar = s?.revenue_at_risk;
 
   return (
     <div className="app-container">
+      <ShapModal userId={shapUser} onClose={() => setShapUser(null)} />
 
       {/* ─── Header ─── */}
       <header className="header">
         <div className="logo">
           <Activity size={28} strokeWidth={2.5} />
           <span>Fin<span className="logo-gradient">Sight</span></span>
+          <span className="version-badge">v3.0</span>
         </div>
         <div className="controls-row">
           <select className="select-dataset" id="dataset-selector" value={selectedDataset} onChange={handleDatasetChange}>
@@ -147,7 +158,7 @@ function App() {
       {data && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="dashboard-grid">
 
-          {/* ── Row 1: Stats ── */}
+          {/* Row 1: Stats (5 cards now) */}
           <StatCard icon={Users} iconClass="stat-icon--indigo" cardClass="stat-card--indigo"
             label="Total Users" value={s?.total_users?.toLocaleString() || '0'}
             trend={`${s?.metrics?.train_size || 0} train / ${s?.metrics?.test_size || 0} test`}
@@ -162,12 +173,12 @@ function App() {
             trend={`CV: ${(s?.metrics?.cv_auc_mean * 100 || 0).toFixed(1)}% ± ${(s?.metrics?.cv_auc_std * 100 || 0).toFixed(1)}%`}
             trendClass="stat-trend--neutral" trendIcon={CheckCircle} delay={0.1} />
 
-          <StatCard icon={BarChart3} iconClass="stat-icon--emerald" cardClass="stat-card--emerald"
-            label="F1 Score" value={`${(s?.metrics?.f1 * 100 || 0).toFixed(1)}%`}
-            trend={`P: ${(s?.metrics?.precision * 100 || 0).toFixed(0)}% / R: ${(s?.metrics?.recall * 100 || 0).toFixed(0)}%`}
-            trendClass="stat-trend--neutral" trendIcon={CheckCircle} delay={0.15} />
+          <StatCard icon={DollarSign} iconClass="stat-icon--amber" cardClass="stat-card--amber"
+            label="Revenue at Risk" value={`$${(rar?.total || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+            trend={`${segChurn?.length || 0} segments tracked`}
+            trendClass="stat-trend--down" trendIcon={TrendingDown} delay={0.15} />
 
-          {/* ── Row 2: Segments + Lifecycle ── */}
+          {/* Row 2: Segments + Lifecycle */}
           <Section span={8} delay={0.15}>
             <h2><Sparkles size={20} style={{ color: '#6366f1' }} /> User Segmentation Intelligence</h2>
             <div className="chart-wrapper">
@@ -206,12 +217,12 @@ function App() {
             </div>
           </Section>
 
-          {/* ── Row 3: Churn by Segment + SHAP ── */}
+          {/* Row 3: Churn by Segment + SHAP */}
           <Section span={6} delay={0.25}>
             <h2><ShieldAlert size={20} style={{ color: '#f43f5e' }} /> Churn Rate by Segment</h2>
             <div className="chart-wrapper">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={segChurn.map(s => ({ ...s, avg_churn_pct: +(s.avg_churn * 100).toFixed(1) }))} layout="vertical" barCategoryGap="25%">
+                <BarChart data={segChurn.map(s => ({ ...s, avg_churn_pct: +(s.avg_churn * 100).toFixed(1), rar: s.total_revenue_at_risk ? `$${s.total_revenue_at_risk.toFixed(0)}` : '' }))} layout="vertical" barCategoryGap="25%">
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
                   <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} unit="%" />
                   <YAxis type="category" dataKey="segment" tick={{ fill: '#64748b', fontSize: 12, fontWeight: 500 }} axisLine={false} tickLine={false} width={120} />
@@ -245,9 +256,18 @@ function App() {
             </div>
           </Section>
 
-          {/* ── Row 4: Product Mix (if available) ── */}
+          {/* Row: What-If Simulation Engine */}
+          <Section span={12} delay={0.32}>
+            <WhatIfPanel segments={s?.segments} />
+          </Section>
+
+          {/* Row: Live Event Stream + Product Mix */}
+          <Section span={5} delay={0.34}>
+            <LiveTicker />
+          </Section>
+
           {productMix?.overall && (
-            <Section span={12} delay={0.32}>
+            <Section span={7} delay={0.34}>
               <h2><ShoppingBag size={20} style={{ color: '#f59e0b' }} /> Product Mix Analysis</h2>
               <div className="chart-wrapper">
                 <ResponsiveContainer width="100%" height="100%">
@@ -265,7 +285,7 @@ function App() {
             </Section>
           )}
 
-          {/* ── Row 5: Churn Drivers ── */}
+          {/* Row: Churn Drivers */}
           <Section span={12} delay={0.35}>
             <h2><Target size={20} style={{ color: '#f43f5e' }} /> Primary Churn Drivers</h2>
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
@@ -283,25 +303,29 @@ function App() {
             </div>
           </Section>
 
-          {/* ── Row 6: Hypotheses (data-driven) ── */}
+          {/* Row: Testable Hypotheses */}
           <Section span={12} delay={0.38}>
-            <h2><Lightbulb size={20} style={{ color: '#f59e0b' }} /> Testable Hypotheses</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0 }}><Lightbulb size={20} style={{ color: '#f59e0b' }} /> Testable Hypotheses</h2>
+              <button className="btn-outline" onClick={fetchLlmHypotheses} disabled={llmLoading}
+                style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem' }}>
+                <Zap size={13} />{llmLoading ? 'Generating...' : '✨ AI Generate'}
+              </button>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-              {s?.hypotheses?.map((h, i) => (
+              {(llmHypotheses?.hypotheses || s?.hypotheses)?.map((h, i) => (
                 <div key={i} className="hypothesis-card" style={{ borderLeft: `4px solid ${COLORS[i]}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    <span className="badge" style={{ background: '#f1f5f9', color: '#475569' }}>{h.driver}</span>
-                    <span className={`badge badge-${h.impact.toLowerCase()}`}>{h.impact} Impact</span>
+                    <span className="badge" style={{ background: '#f1f5f9', color: '#475569' }}>{h.driver || h.title}</span>
+                    <span className={`badge badge-${(h.impact || h.confidence || 'medium').toLowerCase()}`}>{h.impact || h.confidence} Impact</span>
                   </div>
                   <p style={{ fontSize: '0.88rem', lineHeight: 1.6, color: '#475569', marginBottom: '0.75rem' }}>{h.hypothesis}</p>
-                  {h.stat && (
+                  {(h.stat || h.action) && (
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span className="badge" style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.15)' }}>
-                        📊 {h.stat}
-                      </span>
-                      {h.test && (
+                      {h.stat && <span className="badge" style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.15)' }}>📊 {h.stat}</span>}
+                      {(h.test || h.action) && (
                         <span className="badge" style={{ background: 'rgba(16,185,129,0.08)', color: '#059669', border: '1px solid rgba(16,185,129,0.15)' }}>
-                          <FlaskConical size={11} style={{ marginRight: 3 }} />{h.test}
+                          <FlaskConical size={11} style={{ marginRight: 3 }} />{h.test || h.action}
                         </span>
                       )}
                     </div>
@@ -309,9 +333,14 @@ function App() {
                 </div>
               ))}
             </div>
+            {llmHypotheses && (
+              <div style={{ marginTop: '0.75rem', fontSize: '0.72rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <Zap size={11} /> Generated via {llmHypotheses.source === 'llm' ? 'Llama 3 (Groq)' : 'Rule-Based Engine'}
+              </div>
+            )}
           </Section>
 
-          {/* ── Row 7: Cohort Retention Heatmap ── */}
+          {/* Row: Cohort Retention Heatmap */}
           {cohorts.length > 0 && (
             <Section span={12} delay={0.4}>
               <h2><CalendarRange size={20} style={{ color: '#06b6d4' }} /> Cohort Retention Heatmap</h2>
@@ -319,8 +348,7 @@ function App() {
                 <table className="data-table cohort-table">
                   <thead>
                     <tr>
-                      <th>Cohort</th>
-                      <th>Size</th>
+                      <th>Cohort</th><th>Size</th>
                       {cohorts[0]?.retention.map((_, i) => <th key={i}>M{i}</th>)}
                     </tr>
                   </thead>
@@ -331,12 +359,9 @@ function App() {
                         <td style={{ fontWeight: 500, color: '#64748b' }}>{c.size.toLocaleString()}</td>
                         {c.retention.map((v, vi) => (
                           <td key={vi} style={{
-                            background: retentionColor(v),
-                            textAlign: 'center', fontWeight: 600, fontSize: '0.78rem',
+                            background: retentionColor(v), textAlign: 'center', fontWeight: 600, fontSize: '0.78rem',
                             color: v >= 40 ? '#166534' : v > 0 ? '#9a3412' : '#94a3b8'
-                          }}>
-                            {v > 0 ? `${v}%` : '–'}
-                          </td>
+                          }}>{v > 0 ? `${v}%` : '–'}</td>
                         ))}
                       </tr>
                     ))}
@@ -346,17 +371,17 @@ function App() {
             </Section>
           )}
 
-          {/* ── Row 8: User Table ── */}
+          {/* Row: User Table with clickable SHAP */}
           <Section span={12} delay={0.42}>
-            <h2><Users size={20} style={{ color: '#6366f1' }} /> User-Level Insights</h2>
+            <h2><Users size={20} style={{ color: '#6366f1' }} /> User-Level Insights <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 400, marginLeft: '0.5rem' }}>Click any row for SHAP explanation</span></h2>
             <div style={{ overflowX: 'auto' }}>
               <table className="data-table">
                 <thead>
-                  <tr><th>User ID</th><th>Segment</th><th>Lifecycle</th><th>Churn Risk</th><th>LTV</th></tr>
+                  <tr><th>User ID</th><th>Segment</th><th>Lifecycle</th><th>Churn Risk</th><th>LTV</th><th>$ at Risk</th></tr>
                 </thead>
                 <tbody>
                   {data?.users?.slice(0, 50).map((u, i) => (
-                    <tr key={i}>
+                    <tr key={i} onClick={() => setShapUser(u.user_id)} style={{ cursor: 'pointer' }}>
                       <td style={{ fontWeight: 600, color: '#1e293b' }}>{u.user_id}</td>
                       <td><span className="badge" style={{ background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.15)' }}>{u.segment}</span></td>
                       <td>{u.lifecycle}</td>
@@ -372,6 +397,7 @@ function App() {
                         </div>
                       </td>
                       <td style={{ fontWeight: 600 }}>${u.monetary?.toFixed(2)}</td>
+                      <td style={{ fontWeight: 600, color: '#f59e0b' }}>${u.revenue_at_risk?.toFixed(2) || '0.00'}</td>
                     </tr>
                   ))}
                 </tbody>
