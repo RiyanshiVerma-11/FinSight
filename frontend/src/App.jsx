@@ -7,9 +7,9 @@ import {
 import {
   Users, TrendingDown, TrendingUp, Lightbulb,
   Upload, Activity, ShieldAlert, CheckCircle, RefreshCw,
-  Database, BarChart3, Target, Sparkles, Download,
+  Database, Target, Sparkles, Download,
   FlaskConical, ShoppingBag, CalendarRange, Brain,
-  DollarSign, Zap, FileText
+  DollarSign, Zap, FileText, LayoutDashboard, Award, AlertTriangle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Joyride, STATUS } from 'react-joyride';
@@ -18,6 +18,8 @@ import jsPDF from 'jspdf';
 import ShapModal from './components/ShapModal';
 import WhatIfPanel from './components/WhatIfPanel';
 import LiveTicker from './components/LiveTicker';
+import ExecutiveDashboard from './components/ExecutiveDashboard';
+import InterventionEngine from './components/InterventionEngine';
 
 let API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 if (API_URL && !API_URL.startsWith('http')) {
@@ -73,6 +75,7 @@ function App() {
   const [llmHypotheses, setLlmHypotheses] = useState(null);
   const [llmLoading, setLlmLoading] = useState(false);
   const [tourVersion, setTourVersion] = useState(0);
+  const [showExecDash, setShowExecDash] = useState(false);
 
   const [{ runTour, tourSteps }, setTourState] = useState({
     runTour: false,
@@ -219,6 +222,7 @@ function App() {
         </div>
         <div className="controls-row tour-dataset">
           <button className="btn-primary" onClick={startTour}><Sparkles size={17} /> Start Tour</button>
+          {data && <button className="btn-exec" onClick={() => setShowExecDash(true)}><LayoutDashboard size={17} /> Exec View</button>}
           <select className="select-dataset" id="dataset-selector" value={selectedDataset} onChange={handleDatasetChange}>
             <option value="">Select Local Dataset</option>
             {datasets?.map(ds => <option key={ds} value={ds}>{ds}</option>)}
@@ -236,6 +240,10 @@ function App() {
           )}
         </div>
       </header>
+
+      {showExecDash && data && (
+        <ExecutiveDashboard data={data} onClose={() => setShowExecDash(false)} />
+      )}
 
       {data && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="dashboard-grid">
@@ -342,6 +350,52 @@ function App() {
             </Section>
           </div>
 
+          {/* ── Top 3 Global Churn Drivers ── */}
+          <Section span={7} delay={0.3}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
+              <AlertTriangle size={20} style={{ color: '#f43f5e' }} />
+              <h2 style={{ margin: 0 }}>Top 3 Churn Drivers (Global)</h2>
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'linear-gradient(135deg,#f43f5e,#f59e0b)', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '1rem' }}>SHAP</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {(s?.top_drivers || []).slice(0, 3).map((d, i) => {
+                const isIncrease = d.direction === 'increases_churn';
+                const pct = (d.importance * 100).toFixed(1);
+                const barColor = isIncrease ? '#f43f5e' : '#10b981';
+                const icons = ['🔴', '🔴', '🟢'];
+                return (
+                  <motion.div key={i} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
+                    style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                        {i < 2 ? '🔴' : '🟢'} {d.feature}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: barColor, fontWeight: 700 }}>
+                          {isIncrease ? '↑ increases churn' : '↓ reduces churn'}
+                        </span>
+                        <span style={{ fontWeight: 800, color: barColor, fontSize: '1rem' }}>{pct}%</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 10, background: 'var(--bg-input)', borderRadius: 5, overflow: 'hidden' }}>
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ delay: 0.2 + i * 0.1, duration: 0.9, ease: 'easeOut' }}
+                        style={{ height: '100%', background: `linear-gradient(90deg, ${barColor}88, ${barColor})`, borderRadius: 5, boxShadow: `0 0 10px ${barColor}40` }}
+                      />
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                      {i === 0 && 'Recency deviation is the strongest signal — users who haven\'t transacted recently are most likely to leave'}
+                      {i === 1 && 'Drop in transaction frequency signals disengagement early — target with push campaigns'}
+                      {i === 2 && 'High monetary value users are least likely to churn — protect and reward them'}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </Section>
+
           <Section span={5} delay={0.34}>
             <LiveTicker />
           </Section>
@@ -406,23 +460,48 @@ function App() {
             </div>
           </Section>
 
+          {/* ── Intervention Engine ── */}
+          <div style={{ gridColumn: 'span 12' }}>
+            <Section span={12} delay={0} initial={false}>
+              <InterventionEngine segments={s?.segments} segChurn={segChurn} />
+            </Section>
+          </div>
+
           <div style={{ gridColumn: 'span 12' }}>
             <Section span={12} delay={0} className="tour-hypotheses" initial={false}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2 style={{ margin: 0 }}><Lightbulb size={20} style={{ color: '#f59e0b' }} /> Testable Hypotheses</h2>
+                <h2 style={{ margin: 0 }}><Lightbulb size={20} style={{ color: '#f59e0b' }} /> AI Hypotheses — SHAP Driven</h2>
                 <button className="btn-outline" onClick={fetchLlmHypotheses} disabled={llmLoading}><Zap size={13} /> {llmLoading ? 'Generating...' : '✨ AI Generate'}</button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-                {(llmHypotheses?.hypotheses || s?.hypotheses)?.map((h, i) => (
-                  <div key={i} className="hypothesis-card" style={{ borderLeft: `4px solid ${COLORS[i % COLORS.length]}` }}>
-                    <span className="badge">{h.driver || h.title}</span>
-                    <p style={{ fontSize: '0.88rem', margin: '0.5rem 0' }}>{h.hypothesis}</p>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      {h.stat && <span className="badge">📊 {h.stat}</span>}
-                      <span className="badge" style={{ color: '#059669' }}><FlaskConical size={11} /> {h.test || h.action}</span>
+                {(llmHypotheses?.hypotheses || s?.hypotheses)?.map((h, i) => {
+                  const driver = s?.top_drivers?.[i];
+                  const shapContext = driver
+                    ? `Because ${driver.feature} ${driver.direction === 'increases_churn' ? '↑' : '↓'} (${(driver.importance*100).toFixed(0)}% impact)`
+                    : null;
+                  return (
+                    <div key={i} className="hypothesis-card" style={{ borderLeft: `4px solid ${COLORS[i % COLORS.length]}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                        <span className="badge">{h.driver || h.title}</span>
+                        {shapContext && (
+                          <span style={{ fontSize: '0.68rem', background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '0.4rem', padding: '0.15rem 0.45rem', fontWeight: 600 }}>
+                            {shapContext}
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '0.88rem', margin: '0.5rem 0', color: 'var(--text-secondary)' }}>{h.hypothesis}</p>
+                      {shapContext && (
+                        <div style={{ fontSize: '0.78rem', color: '#8b5cf6', fontWeight: 600, marginBottom: '0.5rem', background: 'rgba(139,92,246,0.06)', padding: '0.3rem 0.5rem', borderRadius: '0.4rem' }}>
+                          🧠 {shapContext} → {h.action || h.test}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {h.stat && <span className="badge">📊 {h.stat}</span>}
+                        <span className="badge" style={{ color: '#059669' }}><FlaskConical size={11} /> {h.test || h.action}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </Section>
           </div>
@@ -475,55 +554,68 @@ function App() {
                 </div>
               </div>
 
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', padding: '0.6rem 1rem', background: 'linear-gradient(135deg,rgba(244,63,94,0.06),rgba(245,158,11,0.06))', borderRadius: '0.75rem', border: '1px solid rgba(244,63,94,0.12)' }}>
+                <Award size={16} style={{ color: '#f43f5e' }} />
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f43f5e' }}>Top 50 Users to Save TODAY</span>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '0.25rem' }}>— ranked by Priority Score (churn × revenue × engagement sensitivity)</span>
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '25%' }}>User Profile</th>
-                      <th style={{ width: '15%' }}>Segment</th>
-                      <th style={{ width: '15%' }}>Lifecycle</th>
-                      <th style={{ width: '20%' }}>Churn Risk</th>
-                      <th style={{ width: '25%' }}>Predicted LTV</th>
+                      <th style={{ width: '20%' }}>User Profile</th>
+                      <th style={{ width: '12%' }}>Segment</th>
+                      <th style={{ width: '12%' }}>Lifecycle</th>
+                      <th style={{ width: '18%' }}>Churn Risk</th>
+                      <th style={{ width: '18%' }}>Predicted LTV</th>
+                      <th style={{ width: '20%' }}>Priority Score</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
-                      const usersToShow = data?.users?.slice(0, 50) || [];
-                      const maxLtv = Math.max(...usersToShow.map(user => user.predicted_ltv || user.monetary || 0), 1);
-                      
-                      return usersToShow.map((u, i) => {
+                      const allUsers = data?.users || [];
+                      const maxLtv = Math.max(...allUsers.map(u => u.predicted_ltv || u.monetary || 0), 1);
+                      const maxPriority = Math.max(...allUsers.map(u => {
+                        const ltv = u.predicted_ltv || u.monetary || 0;
+                        return u.churn_probability * (ltv / maxLtv) * (u.frequency_score || 1);
+                      }), 1);
+                      const sorted = [...allUsers]
+                        .map(u => ({
+                          ...u,
+                          priority: u.churn_probability * ((u.predicted_ltv || u.monetary || 0) / maxLtv) * (u.frequency_score || 1)
+                        }))
+                        .sort((a, b) => b.priority - a.priority)
+                        .slice(0, 50);
+
+                      return sorted.map((u, i) => {
                         const riskColor = u.churn_probability > 0.7 ? 'var(--accent-rose)' : u.churn_probability > 0.4 ? 'var(--accent-amber)' : 'var(--accent-emerald)';
-                        const ltvPct = Math.min(100, (((u.predicted_ltv || u.monetary) / maxLtv) * 100));
-                        
+                        const ltvVal = u.predicted_ltv || u.monetary || 0;
+                        const ltvPct = Math.min(100, (ltvVal / maxLtv) * 100);
+                        const priorityPct = Math.min(100, (u.priority / maxPriority) * 100);
+                        const priorityColor = priorityPct > 70 ? '#f43f5e' : priorityPct > 40 ? '#f59e0b' : '#10b981';
                         return (
-                          <tr key={i} onClick={() => setShapUser(u.user_id)} style={{ 
+                          <tr key={i} onClick={() => setShapUser(u.user_id)} style={{
                             cursor: 'pointer',
                             borderLeft: `3px solid ${u.churn_probability > 0.7 ? 'var(--accent-rose)' : 'transparent'}`
                           }}>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                <div style={{ 
-                                  width: 36, height: 36, borderRadius: '10px', 
-                                  background: `linear-gradient(135deg, ${COLORS[i % COLORS.length]}, ${COLORS[(i + 1) % COLORS.length]})`,
+                                <div style={{
+                                  width: 36, height: 36, borderRadius: '10px',
+                                  background: `linear-gradient(135deg, ${COLORS[i % COLORS.length]}, ${COLORS[(i+1) % COLORS.length]})`,
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  color: '#fff', fontWeight: 700, fontSize: '0.8rem',
-                                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                                  color: '#fff', fontWeight: 700, fontSize: '0.8rem', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                                 }}>
-                                  {u.user_id.toString().slice(-2)}
+                                  {i < 3 ? ['🥇','🥈','🥉'][i] : u.user_id.toString().slice(-2)}
                                 </div>
                                 <div>
                                   <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{u.user_id}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ID: #{u.user_id.toString().slice(0, 6)}</div>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Rank #{i + 1}</div>
                                 </div>
                               </div>
                             </td>
                             <td>
-                              <span className="badge" style={{ 
-                                background: `${COLORS[i % COLORS.length]}12`, 
-                                color: COLORS[i % COLORS.length],
-                                border: `1px solid ${COLORS[i % COLORS.length]}25`,
-                                padding: '0.2rem 0.6rem'
-                              }}>
+                              <span className="badge" style={{ background: `${COLORS[i % COLORS.length]}12`, color: COLORS[i % COLORS.length], border: `1px solid ${COLORS[i % COLORS.length]}25`, padding: '0.2rem 0.6rem' }}>
                                 {u.segment}
                               </span>
                             </td>
@@ -539,16 +631,10 @@ function App() {
                                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: riskColor }}>
                                     {u.churn_probability > 0.7 ? 'CRITICAL' : u.churn_probability > 0.4 ? 'WARNING' : 'STABLE'}
                                   </span>
-                                  <span style={{ fontWeight: 800, color: riskColor, fontSize: '0.85rem' }}>
-                                    {(u.churn_probability * 100).toFixed(0)}%
-                                  </span>
+                                  <span style={{ fontWeight: 800, color: riskColor, fontSize: '0.85rem' }}>{(u.churn_probability * 100).toFixed(0)}%</span>
                                 </div>
                                 <div className="churn-bar-track" style={{ width: '100%', height: 6, background: 'var(--bg-input)' }}>
-                                  <div className="churn-bar-fill" style={{ 
-                                    width: `${u.churn_probability * 100}%`, 
-                                    backgroundColor: riskColor,
-                                    boxShadow: `0 0 10px ${riskColor}30`
-                                  }} />
+                                  <div className="churn-bar-fill" style={{ width: `${u.churn_probability * 100}%`, backgroundColor: riskColor, boxShadow: `0 0 10px ${riskColor}30` }} />
                                 </div>
                               </div>
                             </td>
@@ -556,16 +642,25 @@ function App() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                                   <span style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-                                    ${(u.predicted_ltv || u.monetary)?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    ${ltvVal?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
-                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>LTV SCORE</span>
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>LTV</span>
                                 </div>
                                 <div className="driver-bar-track" style={{ margin: 0, height: 6, background: 'var(--bg-input)' }}>
-                                  <div className="driver-bar-fill" style={{ 
-                                    width: `${ltvPct}%`, 
-                                    background: 'linear-gradient(90deg, var(--primary-light), var(--primary))',
-                                    borderRadius: '3px'
-                                  }} />
+                                  <div className="driver-bar-fill" style={{ width: `${ltvPct}%`, background: 'linear-gradient(90deg, var(--primary-light), var(--primary))', borderRadius: '3px' }} />
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: priorityColor }}>
+                                    {priorityPct > 70 ? '🔥 URGENT' : priorityPct > 40 ? '⚠️ HIGH' : '📌 MONITOR'}
+                                  </span>
+                                  <span style={{ fontWeight: 800, color: priorityColor, fontSize: '0.85rem' }}>{priorityPct.toFixed(0)}</span>
+                                </div>
+                                <div style={{ height: 6, background: 'var(--bg-input)', borderRadius: 3, overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${priorityPct}%`, background: `linear-gradient(90deg, ${priorityColor}88, ${priorityColor})`, borderRadius: 3, transition: 'width 0.7s ease' }} />
                                 </div>
                               </div>
                             </td>

@@ -782,3 +782,432 @@ h2 {
     grid-column: span 3 !important;
   }
 }
+
+/* ───────── Exec View Button ───────── */
+.btn-exec {
+  background: linear-gradient(135deg, #f43f5e, #8b5cf6);
+  color: #fff;
+  border: none;
+  padding: 0.6rem 1.25rem;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 0.875rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 2px 10px rgba(244,63,94,0.3);
+  animation: pulse-soft 2.5s ease-in-out infinite;
+}
+.btn-exec:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 22px rgba(244,63,94,0.45);
+  filter: brightness(1.08);
+}
+
+/* ───────── Executive Dashboard Modal ───────── */
+.exec-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+.exec-modal {
+  background: var(--bg-card);
+  border-radius: var(--radius-2xl);
+  max-width: 760px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.08);
+  border: 1px solid var(--border);
+}
+.exec-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 1.75rem;
+  background: linear-gradient(135deg, #1e1b4b, #4c1d95, #be123c);
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  color: #fff;
+}
+.exec-logo-icon {
+  width: 40px;
+  height: 40px;
+  background: rgba(255,255,255,0.15);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.exec-close-btn {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #fff;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.exec-close-btn:hover {
+  background: rgba(255,255,255,0.25);
+}
+.exec-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  padding: 1.5rem 1.75rem 0;
+}
+.exec-kpi-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem;
+  text-align: center;
+  transition: all 0.2s;
+}
+.exec-kpi-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+.exec-kpi-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 0.6rem;
+}
+.exec-kpi-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+.exec-kpi-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.exec-body {
+  padding: 1.25rem 1.75rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.exec-section-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+.exec-bva-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.exec-bva-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 28px 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+}
+.exec-bva-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.exec-bva-before {
+  font-size: 0.82rem;
+  color: #f43f5e;
+  font-weight: 600;
+}
+.exec-bva-arrow {
+  color: var(--text-muted);
+  font-size: 1rem;
+  text-align: center;
+}
+.exec-bva-after {
+  font-size: 0.82rem;
+  color: #10b981;
+  font-weight: 700;
+}
+.exec-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  background: linear-gradient(135deg, rgba(245,158,11,0.06), rgba(251,191,36,0.06));
+  border: 1px solid rgba(245,158,11,0.2);
+  border-radius: var(--radius-lg);
+}
+.exec-seg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.exec-seg-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 48px;
+  align-items: center;
+  gap: 0.75rem;
+}
+.exec-seg-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.exec-seg-track {
+  height: 8px;
+  background: var(--bg-input);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.exec-seg-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+.exec-seg-val {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  text-align: right;
+}
+@media (max-width: 640px) {
+  .exec-kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .exec-bva-row { grid-template-columns: 1fr 1fr; }
+}
+
+/* ───────── Campaign Simulator ───────── */
+.whatif-mode-toggle {
+  display: flex;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  padding: 0.2rem;
+  border: 1px solid var(--border);
+}
+.whatif-mode-btn {
+  padding: 0.35rem 0.85rem;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--radius-md) - 2px);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.whatif-mode-btn.active {
+  background: var(--bg-card);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.75rem;
+}
+.campaign-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 1rem 0.75rem;
+  background: var(--bg-input);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  text-align: center;
+}
+.campaign-card:hover {
+  border-color: var(--primary-light);
+  background: var(--bg-card-hover);
+  box-shadow: var(--shadow-md);
+}
+.campaign-card--active {
+  border-color: var(--primary);
+  background: rgba(99,102,241,0.05);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+}
+.campaign-card-icon {
+  width: 38px;
+  height: 38px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  margin-bottom: 0.2rem;
+}
+.campaign-card--active .campaign-card-icon {
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  color: #fff;
+}
+.campaign-card-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.campaign-card-desc {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  line-height: 1.3;
+}
+.campaign-card-check {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--primary);
+  font-weight: 800;
+}
+
+/* ───────── Impact Hero Card ───────── */
+.impact-hero-card {
+  background: linear-gradient(135deg, #065f46, #047857, #059669);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  text-align: center;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(16,185,129,0.35);
+}
+.impact-hero-card::before {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 150px;
+  height: 150px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 50%;
+}
+.impact-hero-icon {
+  font-size: 2rem;
+  margin-bottom: 0.4rem;
+}
+.impact-hero-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.impact-hero-value {
+  font-size: 2.8rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin: 0.3rem 0;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+.impact-hero-sub {
+  font-size: 0.78rem;
+  opacity: 0.75;
+  font-weight: 500;
+}
+.whatif-card--green { background: linear-gradient(135deg, rgba(16,185,129,0.06), rgba(6,182,212,0.06)); border-color: rgba(16,185,129,0.2); }
+.whatif-card--red   { background: linear-gradient(135deg, rgba(244,63,94,0.06), rgba(245,158,11,0.06)); border-color: rgba(244,63,94,0.2); }
+
+/* ───────── Impact Summary Box ───────── */
+.impact-summary-box {
+  background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(139,92,246,0.05));
+  border: 1px solid rgba(99,102,241,0.15);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+.impact-summary-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--primary);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.impact-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+.impact-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.impact-summary-key {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.impact-summary-val {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* ───────── Intervention Engine Table ───────── */
+.intervention-table-wrap {
+  overflow-x: auto;
+}
+.intervention-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.intervention-table thead th {
+  padding: 0.75rem 1rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  background: var(--bg-input);
+  border-bottom: 2px solid var(--border-light);
+  text-align: left;
+}
+.intervention-table thead th:first-child { border-radius: var(--radius-md) 0 0 0; }
+.intervention-table thead th:last-child { border-radius: 0 var(--radius-md) 0 0; }
+.intervention-row td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: middle;
+}
+.intervention-row:hover td {
+  background: rgba(99,102,241,0.03);
+}
+.intervention-row:last-child td {
+  border-bottom: none;
+}
