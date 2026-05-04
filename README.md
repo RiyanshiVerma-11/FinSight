@@ -93,11 +93,11 @@ graph TB
 
     subgraph B_API ["Backend API (FastAPI v3.0)"]
         direction LR
-        AN[/analyze]
-        US[/user-shap]
-        WI[/whatif]
-        ST[/stream]
-        LH[/llm]
+        AN["/analyze"]
+        US["/user-shap"]
+        WI["/whatif"]
+        ST["/stream"]
+        LH["/llm"]
     end
 
     subgraph AE ["Analytics Engine"]
