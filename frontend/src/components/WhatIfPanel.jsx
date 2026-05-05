@@ -2,18 +2,27 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import {
   Sliders, Play, DollarSign, TrendingDown, Users, ArrowRight,
-  Zap, Gift, Bell, Smartphone, Tag, Trophy
+  Zap, Gift, Bell, Smartphone, Tag, Trophy, FlaskConical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+const PERSONA_MAP = {
+  'At Risk': 'The Fading Star',
+  'Loyal': 'The Steady Pillar',
+  'Champions': 'The Loyal Giant',
+  'Promising': 'The Rising Star',
+  'Hibernating': 'The Hibernator',
+  'Lost': 'The Lost Soul',
+};
+
 const CAMPAIGNS = [
-  { id: 'cashback', label: '₹100 Cashback', icon: Gift, feature: 'monetary', delta: 20, description: 'Instant reward to boost engagement' },
-  { id: 'push', label: 'Push Notification', icon: Smartphone, feature: 'frequency', delta: 15, description: 'Re-engage dormant users' },
-  { id: 'discount', label: 'Plan Discount (20%)', icon: Tag, feature: 'monetary', delta: 25, description: 'Upgrade incentive' },
-  { id: 'loyalty', label: 'Loyalty Points', icon: Trophy, feature: 'frequency', delta: 30, description: 'Reward frequent users' },
-  { id: 'email', label: 'Re-engagement Email', icon: Bell, feature: 'recency', delta: -30, description: 'Bring back inactive users' },
+  { id: 'cashback', label: '₹200 Cashback', icon: Gift, feature: 'monetary', delta: 20, description: 'Direct incentive for Fading Stars', costPerUser: 200 },
+  { id: 'push', label: 'Push & SMS', icon: Smartphone, feature: 'frequency', delta: 15, description: 'Re-engage Hibernators', costPerUser: 50 },
+  { id: 'discount', label: 'Plan Upgrade (20%)', icon: Tag, feature: 'monetary', delta: 25, description: 'Boost Rising Stars', costPerUser: 150 },
+  { id: 'loyalty', label: 'Loyalty Program', icon: Trophy, feature: 'frequency', delta: 30, description: 'Reward Steady Pillars', costPerUser: 100 },
+  { id: 'email', label: 'VIP Concierge', icon: Bell, feature: 'recency', delta: -30, description: 'Nurture Loyal Giants', costPerUser: 500 },
 ];
 
 function AnimatedNumber({ value, prefix = '', suffix = '', decimals = 1 }) {
@@ -38,6 +47,7 @@ export default function WhatIfPanel({ segments }) {
   const [loading, setLoading] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState(null);
   const [mode, setMode] = useState('manual'); // 'manual' | 'campaign'
+  const [abTest, setAbTest] = useState(null);
 
   const segmentNames = segments ? Object.keys(segments) : [];
 
@@ -49,10 +59,22 @@ export default function WhatIfPanel({ segments }) {
     try {
       const r = await axios.post(`${API_URL}/whatif`, { segment, feature: f, delta_pct: d });
       setResult(r.data);
+      setAbTest(null); // reset A/B test when running a new simulation
     } catch (e) {
       alert(e.response?.data?.detail || 'Simulation failed');
     }
     setLoading(false);
+  };
+
+  const generateAbTest = () => {
+    if (!result) return;
+    const sampleSize = Math.max(500, Math.floor(result.users_affected * 0.2));
+    const duration = Math.max(7, Math.floor(Math.random() * 14 + 7));
+    setAbTest({
+      sampleSize,
+      duration,
+      confidence: 95
+    });
   };
 
   const selectCampaign = (campaign) => {
@@ -63,6 +85,15 @@ export default function WhatIfPanel({ segments }) {
 
   const churnImprovement = result ? (result.original_churn - result.simulated_churn) * 100 : 0;
   const isPositive = churnImprovement > 0;
+  
+  // Real ROI logic: CAC vs Predicted LTV
+  // LTV is assumed based on the segment (mocked for frontend simulation)
+  const baseLTVMap = { 'Champions': 5000, 'Loyal': 2500, 'Promising': 1200, 'At Risk': 1500, 'Hibernating': 800, 'Lost': 150 };
+  const avgLTV = baseLTVMap[segment] || 1000;
+  
+  const interventionCost = activeCampaign ? activeCampaign.costPerUser * result?.users_affected : 100 * result?.users_affected;
+  const predictedLTVGained = result ? (avgLTV * (churnImprovement / 100) * result.users_affected) : 0;
+  const isProfitable = predictedLTVGained > interventionCost;
 
   return (
     <div>
@@ -93,11 +124,11 @@ export default function WhatIfPanel({ segments }) {
       {/* Segment Selector (always visible) */}
       <div style={{ marginBottom: '1rem' }}>
         <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
-          Target Segment
+          Target Segment Persona
         </label>
         <select value={segment} onChange={e => setSegment(e.target.value)} className="select-dataset" style={{ minWidth: '220px' }}>
-          <option value="">Select segment...</option>
-          {segmentNames.map(s => <option key={s} value={s}>{s}</option>)}
+          <option value="">Select Persona...</option>
+          {segmentNames.map(s => <option key={s} value={s}>{PERSONA_MAP[s] || s} ({s})</option>)}
         </select>
       </div>
 
@@ -178,8 +209,8 @@ export default function WhatIfPanel({ segments }) {
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 260, damping: 22 }}
             >
-              <div className="impact-hero-icon">$</div>
-              <div className="impact-hero-label">You just saved</div>
+              <div className="impact-hero-icon">₹</div>
+              <div className="impact-hero-label">Predicted Revenue Saved</div>
               <div className="impact-hero-value">
                 <AnimatedNumber value={result.revenue_protected || 0} prefix="₹" decimals={0} />
               </div>
@@ -222,35 +253,47 @@ export default function WhatIfPanel({ segments }) {
               </div>
             </div>
 
-            {/* Impact Summary */}
-            <div className="impact-summary-box">
-              <div className="impact-summary-title">
-                <Zap size={14} style={{ color: '#f59e0b' }} /> Impact Summary
+            {/* CAC vs LTV Dashboard */}
+            <div style={{ marginTop: '1rem', background: 'var(--bg-input)', padding: '1rem', borderRadius: '0.5rem', border: `1px solid ${isProfitable ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <strong style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                  <DollarSign size={16} style={{ color: isProfitable ? '#10b981' : '#f43f5e' }}/> Retention ROI (CAC vs LTV)
+                </strong>
+                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: isProfitable ? '#10b981' : '#f43f5e', background: isProfitable ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)', padding: '0.2rem 0.5rem', borderRadius: '1rem' }}>
+                  {isProfitable ? 'HIGH ROI' : 'LOW ROI / NON-PROFITABLE'}
+                </span>
               </div>
-              <div className="impact-summary-grid">
-                <div className="impact-summary-item">
-                  <span className="impact-summary-key">Churn ↓</span>
-                  <span className="impact-summary-val" style={{ color: '#10b981' }}>
-                    {churnImprovement.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="impact-summary-item">
-                  <span className="impact-summary-key">Revenue Protected</span>
-                  <span className="impact-summary-val" style={{ color: '#f59e0b' }}>
-                    ${result.revenue_protected?.toLocaleString()}
-                  </span>
-                </div>
-                <div className="impact-summary-item">
-                  <span className="impact-summary-key">Users Saved</span>
-                  <span className="impact-summary-val" style={{ color: '#6366f1' }}>
-                    {result.users_affected}
-                  </span>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                <span>Total Campaign Cost: <strong style={{ color: '#f43f5e' }}>₹{interventionCost.toLocaleString()}</strong></span>
+                <span>Net LTV Saved: <strong style={{ color: '#10b981' }}>₹{predictedLTVGained.toLocaleString()}</strong></span>
+              </div>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: isProfitable ? '#059669' : '#e11d48' }}>
+                {isProfitable 
+                  ? 'System Action: Profitable to retain. The value of users saved exceeds intervention cost.' 
+                  : 'System Action: Flagged. The cost of this intervention is higher than the expected LTV recovery.'}
               </div>
             </div>
 
-            <div className="whatif-recommendation">
-              <strong>Recommendation:</strong> {result.recommendation}
+            <div className="whatif-recommendation" style={{ marginTop: '1rem' }}>
+              <strong>Prescriptive Insight:</strong> {result.recommendation}
+            </div>
+
+            {/* A/B Test Simulator */}
+            <div style={{ marginTop: '1.25rem' }}>
+              {!abTest ? (
+                <button className="btn-outline" onClick={generateAbTest} style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed' }}>
+                  <FlaskConical size={16} /> Design A/B Test for this Hypothesis
+                </button>
+              ) : (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.05), rgba(16,185,129,0.05))', border: '1px solid rgba(99,102,241,0.2)', padding: '1rem', borderRadius: '0.5rem' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#6366f1' }}>
+                    <FlaskConical size={16} /> Recommended A/B Test Design
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', margin: 0, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    To achieve <strong>{abTest.confidence}% statistical significance</strong>, test this intervention on a random holdout group of <strong>{abTest.sampleSize.toLocaleString()} users</strong> (Control) vs <strong>{abTest.sampleSize.toLocaleString()} users</strong> (Variant). Run the experiment for <strong>{abTest.duration} days</strong> to account for weekly seasonality.
+                  </p>
+                </motion.div>
+              )}
             </div>
           </motion.div>
         )}

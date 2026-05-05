@@ -2,57 +2,73 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Target, Zap } from 'lucide-react';
 
+const PERSONA_MAP = {
+  'At Risk': 'The Fading Star',
+  'Loyal': 'The Steady Pillar',
+  'Champions': 'The Loyal Giant',
+  'Promising': 'The Rising Star',
+  'Hibernating': 'The Hibernator',
+  'Lost': 'The Lost Soul',
+};
+
 const INTERVENTION_MAP = {
   'At Risk': {
     problem: 'High recency deviation',
-    action: 'Send ₹100 cashback offer',
+    action: 'Send ₹200 cashback offer',
+    cost: 200,
+    est_ltv: 1500,
     campaign: 'cashback',
     color: '#f43f5e',
-    emoji: '🚨',
   },
   'Loyal': {
     problem: 'Frequency plateau',
     action: 'Launch loyalty reward program',
+    cost: 150,
+    est_ltv: 2500,
     campaign: 'loyalty',
     color: '#6366f1',
-    emoji: '💎',
   },
   'Champions': {
     problem: 'Low but needs nurturing',
     action: 'Exclusive VIP upgrade offer',
+    cost: 500,
+    est_ltv: 5000,
     campaign: 'vip',
     color: '#8b5cf6',
-    emoji: '👑',
   },
   'Promising': {
     problem: 'Low monetary conversion',
     action: 'Plan upgrade discount (20% off)',
+    cost: 100,
+    est_ltv: 1200,
     campaign: 'discount',
     color: '#06b6d4',
-    emoji: '🌟',
   },
   'Hibernating': {
     problem: 'High IPI deviation + low activity',
     action: 'Re-engagement email + push notification',
+    cost: 50,
+    est_ltv: 800,
     campaign: 'reengagement',
     color: '#f59e0b',
-    emoji: '😴',
   },
   'Lost': {
     problem: 'Very high churn probability',
     action: 'Win-back campaign with strong incentive',
+    cost: 300,
+    est_ltv: 150, // Cost > LTV
     campaign: 'winback',
     color: '#94a3b8',
-    emoji: '💔',
   },
 };
 
 const DEFAULT_INTERVENTION = {
   problem: 'Engagement drop detected',
   action: 'Targeted re-engagement campaign',
+  cost: 100,
+  est_ltv: 500,
   campaign: 'general',
   color: '#6366f1',
-  emoji: '📊',
 };
 
 export default function InterventionEngine({ segments, segChurn }) {
@@ -62,37 +78,37 @@ export default function InterventionEngine({ segments, segChurn }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
         <Zap size={20} style={{ color: '#f59e0b' }} />
-        <h2 style={{ margin: 0 }}>Intervention Engine</h2>
+        <h2 style={{ margin: 0 }}>Retention ROI Engine</h2>
         <span style={{
           fontSize: '0.65rem', fontWeight: 700,
           background: 'linear-gradient(135deg,#f59e0b,#ef4444)',
           color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '1rem'
-        }}>PLAYBOOK</span>
+        }}>LIVE CALCULATOR</span>
       </div>
       <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1.25rem', marginTop: '-0.75rem' }}>
-        Prescriptive action playbook — segment-specific interventions to reduce churn and save revenue
+        Smart spending logic: We only recommend interventions where <strong>ROI &gt; Cost</strong>.
       </p>
 
       <div className="intervention-table-wrap">
         <table className="intervention-table">
           <thead>
             <tr>
-              <th>Segment</th>
+              <th>Persona</th>
               <th>Users</th>
               <th>Problem</th>
               <th>Recommended Action</th>
-              <th>Urgency</th>
+              <th>Retention ROI</th>
             </tr>
           </thead>
           <tbody>
             {segmentList.map(([seg, count], i) => {
               const cfg = INTERVENTION_MAP[seg] || DEFAULT_INTERVENTION;
+              const personaName = PERSONA_MAP[seg] || seg;
               const segData = segChurn?.find(s => s.segment === seg);
               const churnPct = segData ? (segData.avg_churn * 100).toFixed(1) : '—';
-              const urgency = segData
-                ? segData.avg_churn > 0.6 ? 'CRITICAL' : segData.avg_churn > 0.35 ? 'HIGH' : 'MEDIUM'
-                : 'MEDIUM';
-              const urgencyColor = urgency === 'CRITICAL' ? '#f43f5e' : urgency === 'HIGH' ? '#f59e0b' : '#10b981';
+
+              const isProfitable = cfg.est_ltv > cfg.cost;
+              const roiColor = isProfitable ? '#10b981' : '#f43f5e';
 
               return (
                 <motion.tr
@@ -103,9 +119,9 @@ export default function InterventionEngine({ segments, segChurn }) {
                   className="intervention-row"
                 >
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <span style={{ fontSize: '1.1rem' }}>{cfg.emoji}</span>
-                      <span style={{ fontWeight: 700, color: cfg.color, fontSize: '0.9rem' }}>{seg}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem' }}>{personaName}</span>
+                      <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>{seg}</span>
                     </div>
                   </td>
                   <td>
@@ -131,14 +147,22 @@ export default function InterventionEngine({ segments, segChurn }) {
                     </div>
                   </td>
                   <td>
-                    <span style={{
-                      fontSize: '0.7rem', fontWeight: 700,
-                      background: `${urgencyColor}15`,
-                      color: urgencyColor,
-                      border: `1px solid ${urgencyColor}30`,
-                      padding: '0.2rem 0.55rem',
-                      borderRadius: '1rem'
-                    }}>{urgency}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <span style={{
+                        fontSize: '0.7rem', fontWeight: 800,
+                        background: `${roiColor}15`,
+                        color: roiColor,
+                        border: `1px solid ${roiColor}30`,
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '1rem',
+                        marginBottom: '0.25rem'
+                      }}>
+                        {isProfitable ? 'PROFITABLE' : 'NON-PROFITABLE'}
+                      </span>
+                      <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                        Cost: ₹{cfg.cost} | LTV: ₹{cfg.est_ltv}
+                      </span>
+                    </div>
                   </td>
                 </motion.tr>
               );

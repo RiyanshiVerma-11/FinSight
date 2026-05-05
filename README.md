@@ -1,4 +1,4 @@
-# FinSight v3.0 — AI-Powered Churn Intelligence Platform
+# FinSight v3.0 — Enterprise Churn Intelligence & Retention ROI
 
 <div align="center">
 
@@ -14,102 +14,85 @@
 [![SHAP](https://img.shields.io/badge/SHAP-0.44-blueviolet)](https://shap.readthedocs.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](https://docs.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-22c55e)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-Passing-22c55e)](tests/)
 
 </div>
 
 ---
 
-## Competitive Differentiation
+## Strategic Value
 
-| Dimension | Standard Project (Top 10%) | **FinSight v3.0 (Top 1%)** |
+| Dimension | Standard Analytics | **FinSight v3.0 (Enterprise)** |
 |-----------|---------------------------|--------------------------|
-| **Prediction** | Binary churn (Yes/No) | **Probability + Revenue at Risk** |
-| **Segments** | Simple K-Means | **Dynamic RFM + Behavioral Trajectories** |
-| **Explainability** | Static charts | **Per-user Local SHAP Waterfall** |
-| **Action** | None | **AI Hypothesis Engine (SHAP-linked)** |
-| **Simulation** | None | **What-If + Campaign Simulator** |
-| **Prioritization** | None | **Priority Score = Churn × Revenue × Engagement** |
-| **Intervention** | None | **Prescriptive Action Playbook per Segment** |
-| **Executive View** | None | **One-screen Judge/CEO Dashboard** |
-| **Churn Drivers** | Generic | **Global Top 3 SHAP Drivers with impact %** |
-| **Data Ingestion** | CSV only | **CSV/XLSX + Real-Time WebSocket** |
-| **Validation** | None | **Pydantic v2 Strict Schemas** |
-| **Model Management** | Single model | **Timestamped Model Versioning** |
+| **Prediction** | Binary churn (Yes/No) | **Probability + Revenue at Risk + LTV Forecast** |
+| **Segments** | Simple K-Means | **Professional Personas (e.g., "The Fading Star")** |
+| **Explainability** | Static charts | **Per-user Local SHAP + Global Interaction Plots** |
+| **Action** | Static recommendations | **Dynamic ROI Calculator (Profitable / Not)** |
+| **Simulation** | None | **Campaign Simulator + A/B Test Engine** |
+| **Reporting** | CSV Export | **"Board Meeting" PDF Export + Exec View** |
+| **UX** | Dashboard | **Tabbed Interface + Interactive Onboarding Tour** |
+| **Validation** | Manual | **Pydantic v2 Strict Schema + Automated Tests** |
 
 ---
 
 ## Feature Catalogue
 
-### 1. Dynamic RFM Intelligence
-- **Inter-Purchase Interval (IPI)**: Median days between purchases per user. Detects *silently churning* users whose inactivity exceeds their own behavioral norm.
-- **Recency Deviation**: `actual_recency − expected_recency_from_IPI` — personalized churn signal beyond raw recency.
-- **Monetary Velocity**: `total_spent / account_age_days` — distinguishes high-value vs. high-volume users.
-- Quantile-based RFM scoring (1–5) + K-Means clustering with Silhouette Score validation.
+### 1. Tabbed Intelligence Interface *(new)*
+The dashboard is now organized into functional workstreams to reduce cognitive load:
+- **Executive View**: High-level KPIs and Board-ready insights.
+- **Overview**: Behavioral segmentation and lifecycle distribution.
+- **Explainability**: Deep-dive into SHAP drivers and Model Health.
+- **Simulation**: What-If counterfactuals and the Intervention Engine.
+- **Users & Cohorts**: Individual risk profiles and temporal retention heatmaps.
 
-### 2. Per-User Local SHAP Explainability
-- Click any user row → modal renders their individual SHAP waterfall.
+### 2. Retention ROI Calculator *(new)*
+Moves beyond "who will churn" to "who is profitable to save":
+- **Dynamic Costing**: Calculates intervention cost vs. Predicted LTV.
+- **Profitability Labeling**: Automatically flags users as `Profitable` or `Non-Profitable` for retention spend.
+- **Revenue Protection**: Prioritizes users where `(LTV × Churn Reduction) > CAC`.
+
+### 3. "Board Meeting" Export Engine *(new)*
+Generate executive-ready reports with one click:
+- **PDF Export**: Capture the entire dashboard state into a professional document.
+- **CSV Export**: Full raw data export for custom internal analysis.
+- **Exec KPIs**: Highlights "Revenue at Risk" and "Potential Revenue Saved" for C-suite reporting.
+
+### 4. Professional Persona Classification
+Standardized fintech segments for intuitive business communication:
+- **The Fading Star**: High-value users showing rapid frequency decline.
+- **The Loyal Giant**: High-LTV, low-risk users requiring "Platinum" treatment.
+- **The Hibernator**: Long-tenure users who have gone silent (High IPI Deviation).
+- **The Price Shopper**: Low-monetary users sensitive to discounts.
+
+### 5. Interactive Onboarding Tour *(new)*
+Powered by `react-joyride`, a guided walkthrough introduces new users to:
+- Data integration flows.
+- AI explainability (SHAP) interpretation.
+- Simulation engine mechanics.
+- Cohort retention reading.
+
+### 6. Per-User Local SHAP Explainability
+- Click any user row to render their individual SHAP waterfall.
 - *"85% churn risk BECAUSE Recency pushes risk +0.187, Frequency reduces it −0.042"*
-- Color-coded bars: increases churn, decreases churn. Revenue-at-risk per user.
+- **Global Feature Interaction**: Interactive dependence plots visualizing how intersecting variables (e.g., $Amount × Tenure$) drive churn.
 
-### 3. What-If Counterfactual Simulation Engine
-- **Manual mode**: Segment → Feature → % delta → Run → instant impact.
-- **Campaign Simulator** *(new)*: Pick from 5 real campaigns:
- - ₹100 Cashback · Push Notification · Plan Discount (20%) · Loyalty Points · Re-engagement Email
-- **Impact Hero Card**: Animated *"You just saved ₹8,40,000"* banner.
-- **Impact Summary**: Churn ↓ · Revenue Protected · Users Saved.
+### 7. Priority Score Ranking
+User table sorted by a multi-dimensional metric:
+`Priority Score = Churn Prob × (LTV / Max LTV) × Engagement Sensitivity`
+- Surfacing the **"Top 50 Users to Save TODAY"**.
+- Real-time badges: **URGENT / HIGH / MONITOR**.
 
-### 4. Top 3 Churn Drivers (Global) *(new)*
-Prominent animated bar section showing global SHAP impact:
-```
- Recency deviation  → 42% impact ↑ increases churn
- Frequency drop   → 31% impact ↑ increases churn
- High monetary    → 18% impact ↓ reduces churn
-```
-
-### 5. Intervention Engine *(new)*
+### 8. Intervention Engine & Playbook
 Prescriptive action playbook — segment-specific, judge-ready table:
+- **Champions**: VIP upgrades.
+- **At Risk**: Cashback incentives.
+- **Hibernating**: Re-engagement push/emails.
 
-| Segment | Problem | Recommended Action | Urgency |
-|---------|---------|-------------------|---------|
-| At Risk | High recency deviation | Send ₹100 cashback offer | CRITICAL |
-| Loyal | Frequency plateau | Launch loyalty reward program | HIGH |
-| Champions | Needs nurturing | Exclusive VIP upgrade offer | MEDIUM |
-| Hibernating | High IPI deviation | Re-engagement email + push | HIGH |
-| Lost | Very high churn probability | Win-back campaign | CRITICAL |
-
-### 6. Executive Dashboard Mode *(new)*
-One-screen judge/CEO view (press **"Exec View"** button in header):
-- **4 KPI cards**: Total Users · Avg Churn Risk · Revenue at Risk · Potential Revenue Saved
-- **Before vs After FinSight** comparison table
-- **Top Priority Action** with estimated $ impact
-- **Churn by Segment** animated bars
-
-### 7. Priority Score Ranking *(new)*
-User table sorted by `Priority Score = churn_probability × (LTV / max_LTV) × engagement_sensitivity`:
-- medals for top 3 at-risk users
-- ** URGENT / HIGH / MONITOR** badges
-- *"Top 50 Users to Save TODAY"* — actionable daily list for ops teams
-
-### 8. SHAP-Linked AI Hypotheses *(upgraded)*
-Each AI hypothesis now displays its SHAP context chip:
-```
-"Because Recency ↑ (42% impact) → offer cashback campaign"
-```
-Ties the LLM reasoning directly to quantitative ML drivers — making AI recommendations auditable.
-
-### 9. Real-Time WebSocket Event Stream
-Simulated fintech events: transactions, logins, plan downgrades, support tickets — with live churn impact indicators and animated ticker.
-
-### 10. Cohort Retention Heatmap
-User cohorts grouped by acquisition month. Color-coded retention matrix across M0–M12.
-
-### 11. Predicted LTV
-Heuristic LTV model: `historical_spend × (1 − churn_probability) × tenure_multiplier`.
+### 9. Automated Model Health (Drift Detection)
+Real-time tracking of Model Health Metrics including active ROC-AUC and Cross-Validation. A live Data Drift monitor ensures the Random Forest v3.0 model remains calibrated.
 
 ---
 
-## System Architecture
+## How It Works (Architecture)
 
 ```mermaid
 graph TB
@@ -119,41 +102,35 @@ graph TB
   classDef infra fill:#fff7ed,stroke:#ea580c,stroke-width:2px
 
   subgraph FE ["Frontend (React 19 + Vite 8)"]
-    HD["Header + Exec Button"]
-    ED["Executive Dashboard Modal"]
-    ST["Stats + Segment Charts"]
-    WI["What-If + Campaign Simulator"]
-    IE["Intervention Engine Table"]
-    HY["SHAP-Linked Hypotheses"]
+    TABS["Tabbed Navigation (Exec, Overview, ML, Sim, Users)"]
+    TOUR["Joyride Onboarding Tour"]
+    PDF["Board Meeting PDF Export"]
+    WI["What-If + ROI Simulator"]
     UT["Priority-Ranked User Table"]
-    LT["Live WebSocket Ticker"]
-    SM["SHAP User Modal"]
+    SM["SHAP Waterfall Modal"]
   end
 
   subgraph API ["Backend API (FastAPI)"]
     AN["POST /analyze"]
     AL["GET /analyze-local"]
-    DD["GET /demo-data"]
     US["GET /user-shap/{id}"]
     WF["POST /whatif"]
     LH["GET /llm-hypotheses"]
     WS["WS /stream"]
-    LD["GET /list-datasets"]
     MV["GET /models"]
   end
 
   subgraph AE ["Analytics Engine"]
     RFM["Dynamic RFM + IPI"]
-    CM["RF + XGBoost Ensemble"]
+    ML["Random Forest v3.0"]
     SH["SHAP TreeExplainer"]
-    WIF["Counterfactual Engine"]
-    RAR["Revenue at Risk"]
+    ROI["Retention ROI Logic"]
     COH["Cohort Analysis"]
     LTV["Predicted LTV"]
   end
 
   subgraph SVC ["Services"]
-    LLM["LLM Engine — Groq/Llama3"]
+    LLM["LLM Engine (Groq/Llama3)"]
     DG["Fintech Data Generator"]
     MVM["Model Version Manager"]
   end
@@ -162,46 +139,10 @@ graph TB
   API --> AE
   AE --> SVC
 
-  class FE,HD,ED,ST,WI,IE,HY,UT,LT,SM frontend
-  class API,AN,AL,DD,US,WF,LH,WS,LD,MV backend
-  class AE,RFM,CM,SH,WIF,RAR,COH,LTV engine
+  class FE,TABS,TOUR,PDF,WI,UT,SM frontend
+  class API,AN,AL,US,WF,LH,WS,MV backend
+  class AE,RFM,ML,SH,ROI,COH,LTV engine
   class SVC,LLM,DG,MVM infra
-```
-
-### Analytics Pipeline
-
-```
-Raw CSV/XLSX
-   │
-   ▼
-[1] Data Validation (Pydantic v2)
-   │
-   ▼
-[2] Dynamic RFM (IPI · Recency Deviation · Monetary Velocity · Quantile Scoring)
-   │
-   ▼
-[3] Temporal Split (past window → features | future window → labels) ← prevents leakage
-   │
-   ▼
-[4] Churn Model (Random Forest + XGBoost | Stratified 5-Fold CV | ROC-AUC)
-   │
-   ▼
-[5] SHAP (Global TreeExplainer + Per-user local values)
-   │
-   ▼
-[6] Revenue-at-Risk (monetary × churn_probability per user + segment rollup)
-   │
-   ▼
-[7] Priority Score (churn × revenue × engagement sensitivity → ranked list)
-   │
-   ▼
-[8] Intervention Engine (segment → problem → action playbook)
-   │
-   ▼
-[9] Hypothesis Generation (LLM via Groq API | SHAP-linked context | rule-based fallback)
-   │
-   ▼
-[10] JSON Response → React Dashboard
 ```
 
 ---
@@ -212,292 +153,80 @@ Raw CSV/XLSX
 |-------|-----------|---------|
 | **API** | FastAPI 0.104 | Async REST + WebSocket server |
 | **Validation** | Pydantic v2 | Strict request/response schemas |
-| **ML** | Scikit-learn 1.3, XGBoost 2.0 | Churn classification |
+| **ML** | Scikit-learn 1.3, XGBoost 2.0 | Random Forest Churn Classification |
 | **Explainability** | SHAP 0.44 | Global + local feature attribution |
-| **Data** | Pandas 2.1, NumPy 1.26 | Feature engineering |
-| **LLM** | Groq API (Llama 3 70B) | AI hypothesis generation |
-| **Frontend** | React 19, Vite 8 | SPA dashboard |
-| **Animation** | Framer Motion | Micro-animations |
-| **Charts** | Recharts | Data visualization |
-| **Icons** | Lucide React | UI icons |
-| **Real-Time** | WebSocket, AsyncIO | Live event stream |
-| **DevOps** | Docker, Docker Compose | Containerization |
-| **Deployment** | Render.com | Cloud hosting |
-| **Testing** | Pytest, HTTPX, Vitest | Backend + frontend tests |
+| **Frontend** | React 19, Vite 8 | Tabbed SPA dashboard |
+| **Onboarding** | React Joyride | Interactive user tour |
+| **Reporting** | html2canvas, jsPDF | "Board Meeting" PDF generation |
+| **LLM** | Groq API (Llama 3) | SHAP-linked AI hypotheses |
+| **DevOps** | Docker Compose | Containerized orchestration |
 
 ---
 
 ## Getting Started
 
 ### Prerequisites
-- Python 3.10+ and Node.js 18+, **or** Docker Desktop
+- Docker Desktop (Recommended)
 
-### Option A — Docker (Recommended)
+### Option A — Docker (Quick Start)
 ```bash
 git clone https://github.com/RiyanshiVerma-11/FinSight.git
 cd FinSight
-
-# Optional: add your Groq key for AI features
-cp .env.example .env
-# Edit .env → set GROQ_API_KEY=gsk_...
-
 docker-compose up --build
 ```
 | Service | URL |
 |---------|-----|
 | Dashboard | http://localhost:3000 |
 | API | http://localhost:8000 |
-| Swagger UI | http://localhost:8000/docs |
-| ReDoc | http://localhost:8000/redoc |
-
-### Option B — Local Development
-```bash
-# Backend
-cd backend
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-
-# Frontend (separate terminal)
-cd frontend
-npm install
-npm run dev
-```
-
-### Optional: Enable AI Hypotheses
-```bash
-# Free key at https://console.groq.com
-export GROQ_API_KEY=gsk_your_key_here
-```
-
----
-
-## Testing
-
-FinSight ships with a comprehensive test suite covering the analytics engine, API endpoints, and UI components.
-
-### Backend Tests (Pytest + HTTPX)
-
-```bash
-cd backend
-pip install pytest pytest-asyncio httpx
-pytest tests/ -v --tb=short
-```
-
-**Test coverage:**
-
-| Module | Tests | Description |
-|--------|-------|-------------|
-| `test_analytics.py` | 12 | RFM engine, churn model, SHAP, revenue-at-risk |
-| `test_api.py` | 15 | All REST endpoints, schema validation, error handling |
-| `test_whatif.py` | 6 | Counterfactual simulation, campaign scenarios |
-| `test_priority.py` | 4 | Priority score ranking correctness |
-| `test_llm.py` | 5 | LLM engine, SHAP-linked context, fallback |
-
-### Frontend Tests (Vitest + React Testing Library)
-
-```bash
-cd frontend
-npm test
-npm run test:coverage  # Coverage report
-```
-
-**Test coverage:**
-
-| Component | Tests | Description |
-|-----------|-------|-------------|
-| `WhatIfPanel.test.jsx` | 8 | Campaign selection, simulation, impact card rendering |
-| `ExecutiveDashboard.test.jsx` | 6 | KPI rendering, before/after table, close handler |
-| `InterventionEngine.test.jsx` | 5 | Segment mapping, urgency labels, action display |
-| `PriorityScore.test.jsx` | 4 | Sort order, medal rendering, score calculation |
-| `App.test.jsx` | 10 | Data loading, dataset switching, export flows |
-
-### Run All Tests
-```bash
-# From project root
-cd backend && pytest tests/ -v
-cd ../frontend && npm test -- --run
-```
-
----
-
-## API Reference
-
-### Core Endpoints
-
-| Method | Endpoint | Body / Params | Response |
-|--------|----------|---------------|----------|
-| `GET` | `/` | — | Health check + capabilities |
-| `GET` | `/demo-data` | — | Full analytics payload |
-| `POST` | `/analyze` | `multipart/form-data` (CSV/XLSX) | Full analytics payload |
-| `GET` | `/analyze-local` | `?filename=<name>` | Full analytics payload |
-| `GET` | `/list-datasets` | — | `{ datasets: string[] }` |
-| `GET` | `/user-shap/{user_id}` | — | Per-user SHAP waterfall |
-| `POST` | `/whatif` | `WhatIfRequest` | `WhatIfResponse` |
-| `GET` | `/llm-hypotheses` | — | Structured AI hypotheses |
-| `GET` | `/models` | — | Model version metadata |
-| `WS` | `/stream` | — | Real-time event stream |
-
-### Request / Response Schemas
-
-**`POST /whatif`**
-```json
-// Request
-{
- "segment": "At Risk",
- "feature": "frequency",
- "delta_pct": 20
-}
-
-// Response
-{
- "segment": "At Risk",
- "feature": "frequency",
- "delta_pct": 20,
- "original_churn": 0.72,
- "simulated_churn": 0.54,
- "churn_reduction_pct": -18.0,
- "users_affected": 312,
- "revenue_protected": 840000,
- "recommendation": "Increasing frequency by 20% could save ₹8,40,000..."
-}
-```
-
-**Analytics Payload (abbreviated)**
-```json
-{
- "summary": {
-  "total_users": 5000,
-  "avg_churn_risk": 0.34,
-  "segments": { "At Risk": 820, "Loyal": 1240, "Champions": 650 },
-  "segment_churn": [{ "segment": "At Risk", "avg_churn": 0.72, "revenue_at_risk": 240000 }],
-  "shap_data": [{ "feature": "recency_deviation", "importance": 0.42, "direction": "increases_churn" }],
-  "top_drivers": [{ "feature": "recency_deviation", "importance": 0.42, "direction": "increases_churn" }],
-  "revenue_at_risk": { "total": 1200000 },
-  "hypotheses": [{ "driver": "Recency", "hypothesis": "...", "action": "..." }],
-  "metrics": { "roc_auc": 0.87, "cv_auc_mean": 0.85 },
-  "cohort_data": [],
-  "lifecycle_stages": {}
- },
- "users": [
-  {
-   "user_id": "U001",
-   "segment": "At Risk",
-   "lifecycle": "Declining",
-   "churn_probability": 0.78,
-   "predicted_ltv": 12400,
-   "monetary": 8500,
-   "frequency_score": 0.4
-  }
- ]
-}
-```
-
----
-
-## Data Format
-
-Upload your own CSV/XLSX with these columns:
-
-| Column | Description | Required |
-|--------|-------------|----------|
-| `user_id` | Unique user identifier | ✅ |
-| `timestamp` | Event date/time (`YYYY-MM-DD`) | ✅ |
-| `amount` | Monetary value (numeric) | ✅ |
-| `description` | Product/event label | Optional |
-
-Also supports **Online Retail II** format (auto-mapped: `Customer ID` → `user_id`, `InvoiceDate` → `timestamp`, `Price × Quantity` → `amount`).
-
----
-
-## Deployment
-
-### Render.com (Production)
-The project ships with a `render.yaml` for zero-config cloud deployment:
-
-```bash
-# Push to GitHub, connect repo on render.com
-# Environment variables to set in Render dashboard:
-GROQ_API_KEY=gsk_...
-VITE_API_URL=https://your-backend.onrender.com
-```
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GROQ_API_KEY` | Groq API key for AI hypotheses | *(falls back to rule-based)* |
-| `VITE_API_URL` | Backend URL for frontend | `http://localhost:8000` |
-| `PORT` | Backend port | `8000` |
+| Documentation | http://localhost:8000/docs |
 
 ---
 
 ## Business Value
 
-| Problem | FinSight Solution | Quantified Impact |
+| Problem | FinSight Solution | Impact |
 |---------|-----------------|-------------------|
-| **No segmentation** | Dynamic RFM + K-Means | Identify 5-6 distinct behavioral cohorts |
-| **Blind campaigns** | Intervention Engine playbook | Segment-specific targeted actions |
-| **Hidden churn** | Priority Score ranking | Top 50 users to save TODAY |
-| **Unknown revenue loss** | Revenue-at-Risk per user | Exact $ exposure per segment |
-| **Unexplainable AI** | SHAP-linked hypotheses | Auditable ML → action chain |
-| **Executive blind spot** | Executive Dashboard | One-screen C-suite view |
+| **Opaque Decisions** | SHAP Explainability | Auditable ML → Action chain |
+| **Blind Campaigns** | ROI Calculator | Profitable vs Non-Profitable spend |
+| **Hidden Churn** | Priority Score | Top 50 users to save TODAY |
+| **Executive Disconnect**| Board Meeting Export | One-click C-suite reporting |
+| **Complex UX** | Tabbed Interface | Reduced time-to-insight |
 
 ---
 
 ## Project Structure
 
-```
+```text
 FinSight/
 ├── backend/
-│  ├── main.py         # FastAPI app, all endpoints
-│  ├── schemas.py       # Pydantic v2 request/response models
-│  ├── requirements.txt
-│  ├── Dockerfile
-│  ├── datasets/        # Pre-loaded local datasets
-│  ├── models/         # Versioned .pkl model artifacts
-│  ├── services/
-│  │  ├── analytics.py    # RFM, churn model, SHAP, cohort, LTV
-│  │  ├── llm_engine.py    # Groq + rule-based hypothesis engine
-│  │  └── data_generator.py  # Fintech event stream generator
-│  └── tests/
-│    ├── test_analytics.py
-│    ├── test_api.py
-│    ├── test_whatif.py
-│    ├── test_priority.py
-│    └── test_llm.py
+│   ├── main.py           # FastAPI entry point
+│   ├── schemas.py        # Pydantic v2 data models
+│   ├── requirements.txt  # Python dependencies
+│   ├── Dockerfile        # Backend container config
+│   ├── datasets/         # Pre-loaded fintech datasets
+│   ├── models/           # Versioned ML model artifacts (.pkl)
+│   ├── services/
+│   │   ├── analytics.py     # RFM, Churn (RF), SHAP, LTV logic
+│   │   ├── llm_engine.py    # Groq-powered hypothesis generator
+│   │   └── data_generator.py # Real-time event stream logic
+│   └── tests/            # Pytest suite (API & Analytics)
 ├── frontend/
-│  ├── src/
-│  │  ├── App.jsx       # Main dashboard orchestrator
-│  │  ├── index.css      # Design system + component styles
-│  │  └── components/
-│  │    ├── ExecutiveDashboard.jsx  # CEO/judge one-screen view
-│  │    ├── InterventionEngine.jsx  # Segment → action playbook
-│  │    ├── WhatIfPanel.jsx     # Simulation + campaign engine
-│  │    ├── ShapModal.jsx      # Per-user SHAP waterfall
-│  │    └── LiveTicker.jsx      # Real-time event feed
-│  ├── tests/
-│  │  ├── WhatIfPanel.test.jsx
-│  │  ├── ExecutiveDashboard.test.jsx
-│  │  ├── InterventionEngine.test.jsx
-│  │  └── App.test.jsx
-│  ├── vite.config.js
-│  └── package.json
-├── render.yaml         # Render.com deployment config
-├── docker-compose.yml
-└── README.md
+│   ├── src/
+│   │   ├── App.jsx          # Dashboard orchestrator & Tab logic
+│   │   ├── index.css        # Design system & global styles
+│   │   └── components/
+│   │       ├── ExecutiveDashboard.jsx # PDF-exportable CEO view
+│   │       ├── InterventionEngine.jsx # Action playbook engine
+│   │       ├── WhatIfPanel.jsx      # ROI & Campaign simulator
+│   │       ├── ShapModal.jsx       # User-level explainability
+│   │       └── LiveTicker.jsx      # WebSocket event feed
+│   ├── tests/               # Vitest & RTL component tests
+│   ├── vite.config.js       # Vite build configuration
+│   └── package.json         # Node.js dependencies
+├── render.yaml           # Multi-service cloud deployment config
+├── docker-compose.yml    # Local orchestration
+└── README.md             # Project documentation
 ```
-
----
-
-## Code Quality
-
-- **Pydantic v2**: All API inputs/outputs strictly typed — no raw dicts in route handlers.
-- **Error boundaries**: Graceful fallback on LLM timeout, model failure, or malformed data.
-- **Memory safety**: Vectorized Pandas operations; chunked reading for large files; top-5 model artifact retention.
-- **Type safety**: TypeScript-style prop validation on React components via PropTypes where applicable.
-- **Zero secrets in code**: All keys via environment variables; `.env.example` ships with repo.
 
 ---
 
@@ -505,10 +234,8 @@ FinSight/
 
 MIT © 2026 Riyanshi Verma
 
----
-
 <div align="center">
 
-Built with for Fintech Partners · **FinSight v3.0** · Predict · Explain · Intervene
+Built for Professional Fintech Partners · **FinSight v3.0**
 
 </div>
