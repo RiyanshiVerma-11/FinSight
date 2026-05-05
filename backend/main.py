@@ -163,7 +163,7 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         "avg_churn_risk": float(final_df['churn_probability'].mean()),
         "segments": final_df['segment'].value_counts().to_dict(),
         "lifecycle_stages": final_df['lifecycle'].value_counts().to_dict(),
-        "top_drivers": [{"feature": d[0], "importance": float(d[1])} for d in drivers],
+        "top_drivers": drivers,
         "hypotheses": hypotheses,
         "metrics": {
             "silhouette_score": float(silhouette),
@@ -425,10 +425,11 @@ async def get_llm_hypotheses():
     rfm_df = _engine_cache[key]['rfm_df']
     
     segment_stats = eng.get_segment_churn(rfm_df)
-    drivers = sorted(
-        zip(eng._feature_names or ['Recency', 'Frequency', 'Monetary'], eng.model.feature_importances_),
-        key=lambda x: x[1], reverse=True
-    )
+    drivers = [
+        {"feature": name, "importance": float(imp)}
+        for name, imp in zip(eng._feature_names or ['Recency', 'Frequency', 'Monetary'], eng.model.feature_importances_)
+    ]
+    drivers.sort(key=lambda x: x['importance'], reverse=True)
     shap_data = eng._compute_shap(rfm_df[['recency', 'frequency', 'monetary']].head(50), eng._feature_names or ['Recency', 'Frequency', 'Monetary'])
     
     hypotheses = await generate_llm_hypotheses(segment_stats, drivers, shap_data)

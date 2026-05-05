@@ -54,7 +54,7 @@ Moves beyond "who will churn" to "who is profitable to save":
 ### 3. "Board Meeting" Export Engine *(updated)*
 Generate executive-ready reports with one click:
 - **PDF Export**: Capture the entire app state (Header + All Content) into a professional multi-page document.
-- **6-Month Predictive Forecast**: Visualizes future churn risk vs. recovered revenue if recommendations are followed.
+- **Analytical S-Curve Forecasting**: Visualizes future churn risk vs. recovered revenue using a logistic recovery simulation grounded in the model's actual AUC precision, complete with a "No Action" baseline.
 - **Product Risk Breakdown**: Identifies specific "Leaky Bucket" products (e.g., Credit Cards, Savings) for targeted optimization.
 - **Strategic Recommendations**: Prescriptive C-Suite action items based on real-time ROI calculations.
 
@@ -72,10 +72,11 @@ Powered by `react-joyride`, a guided walkthrough introduces new users to:
 - Simulation engine mechanics.
 - Cohort retention reading.
 
-### 6. Per-User Local SHAP Explainability
+### 6. Per-User Local SHAP Explainability & Model Evidence
 - Click any user row to render their individual SHAP waterfall.
 - *"85% churn risk BECAUSE Recency pushes risk +0.187, Frequency reduces it −0.042"*
 - **Global Feature Interaction**: Interactive dependence plots visualizing how intersecting variables (e.g., $Amount × Tenure$) drive churn.
+- **What-If Model Evidence**: Simulation results now return "Model Evidence" bars, mapping the raw data changes back to the Random Forest's cumulative feature importance weights to prove simulation validity.
 
 ### 7. Priority Score Ranking
 User table sorted by a multi-dimensional metric:
@@ -83,14 +84,14 @@ User table sorted by a multi-dimensional metric:
 - Surfacing the **"Top 50 Users to Save TODAY"**.
 - Real-time badges: **URGENT / HIGH / MONITOR**.
 
-### 8. Intervention Engine & Playbook
-Prescriptive action playbook — segment-specific, judge-ready table:
-- **Champions**: VIP upgrades.
-- **At Risk**: Cashback incentives.
-- **Hibernating**: Re-engagement push/emails.
+### 8. Intervention Engine & C-Suite Playbook
+Prescriptive action playbook — an enterprise-grade, segment-specific, judge-ready table:
+- Maps high-level strategic personas directly to targeted C-Suite Interventions (e.g., VIP Concierge, Fee Waivers).
+- Tracks the specific problem driver (e.g., "High IPI Deviation") and calculates live ROI Status (e.g., "URGENT ROI" vs "PROF. GROWTH").
 
-### 9. Automated Model Health (Drift Detection)
-Real-time tracking of Model Health Metrics including active ROC-AUC and Cross-Validation. A live Data Drift monitor ensures the Random Forest v3.0 model remains calibrated.
+### 9. Automated Model Health & Data Drift Monitor
+Real-time tracking of Model Health Metrics including active ROC-AUC and Cross-Validation F1-Scores. 
+- A live **Data Drift Monitor** calculates statistical P-values to detect behavioral shifts, ensuring the Random Forest v3.0 model remains calibrated for high-stakes enterprise decisions.
 
 ---
 

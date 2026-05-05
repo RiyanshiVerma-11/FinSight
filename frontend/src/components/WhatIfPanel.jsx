@@ -39,7 +39,7 @@ function AnimatedNumber({ value, prefix = '', suffix = '', decimals = 1 }) {
   );
 }
 
-export default function WhatIfPanel({ segments }) {
+export default function WhatIfPanel({ segments, segChurn }) {
   const [segment, setSegment] = useState('');
   const [feature, setFeature] = useState('frequency');
   const [delta, setDelta] = useState(20);
@@ -86,10 +86,12 @@ export default function WhatIfPanel({ segments }) {
   const churnImprovement = result ? (result.original_churn - result.simulated_churn) * 100 : 0;
   const isPositive = churnImprovement > 0;
   
-  // Real ROI logic: CAC vs Predicted LTV
-  // LTV is assumed based on the segment (mocked for frontend simulation)
-  const baseLTVMap = { 'Champions': 5000, 'Loyal': 2500, 'Promising': 1200, 'At Risk': 1500, 'Hibernating': 800, 'Lost': 150 };
-  const avgLTV = baseLTVMap[segment] || 1000;
+  // Real ROI logic: Dynamic LTV calculation based on segment data
+  const segData = segChurn?.find(s => s.segment === segment);
+  const avgMonetary = segData?.avg_monetary || 1000;
+  
+  // Dynamic LTV: Current Spend + (Spend * Retention Probability * Duration Multiplier)
+  const avgLTV = Math.round(avgMonetary + (avgMonetary * (1 - (segData?.avg_churn || 0)) * 1.5));
   
   const interventionCost = activeCampaign ? activeCampaign.costPerUser * result?.users_affected : 100 * result?.users_affected;
   const predictedLTVGained = result ? (avgLTV * (churnImprovement / 100) * result.users_affected) : 0;
@@ -202,19 +204,24 @@ export default function WhatIfPanel({ segments }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
           >
-            {/* Big hero card - Revenue Saved */}
+            {/* Big hero card - Revenue Saved / Lost */}
             <motion.div
               className="impact-hero-card"
               initial={{ scale: 0.88, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+              style={{ background: isPositive ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
             >
               <div className="impact-hero-icon">₹</div>
-              <div className="impact-hero-label">Predicted Revenue Saved</div>
+              <div className="impact-hero-label">{isPositive ? 'Predicted Revenue Saved' : 'Potential Revenue Loss'}</div>
               <div className="impact-hero-value">
-                <AnimatedNumber value={result.revenue_protected || 0} prefix="₹" decimals={0} />
+                <AnimatedNumber value={result.revenue_saved || 0} prefix="₹" decimals={0} />
               </div>
-              <div className="impact-hero-sub">with this intervention · {result.users_affected} users protected</div>
+              <div className="impact-hero-sub">
+                {isPositive 
+                  ? `with this intervention · ${result.users_affected} users protected` 
+                  : `due to churn increase · ${result.users_affected} users at higher risk`}
+              </div>
             </motion.div>
 
             {/* Delta cards */}
@@ -274,8 +281,24 @@ export default function WhatIfPanel({ segments }) {
               </div>
             </div>
 
-            <div className="whatif-recommendation" style={{ marginTop: '1rem' }}>
-              <strong>Prescriptive Insight:</strong> {result.recommendation}
+            <div className="whatif-recommendation" style={{ marginTop: '1rem', position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <strong>Prescriptive Insight:</strong>
+                <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', background: 'rgba(99,102,241,0.1)', padding: '0.15rem 0.5rem', borderRadius: '1rem' }}>
+                  MODEL EVIDENCE: {(result.feature_importance * 100).toFixed(1)}%
+                </span>
+              </div>
+              {result.recommendation}
+              <div style={{ marginTop: '0.75rem', height: '4px', background: 'rgba(0,0,0,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                <motion.div 
+                  initial={{ width: 0 }} 
+                  animate={{ width: `${result.feature_importance * 100}%` }} 
+                  style={{ height: '100%', background: 'var(--primary)', borderRadius: '2px' }} 
+                />
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '0.35rem', fontStyle: 'italic' }}>
+                *This simulation is grounded in features that contribute {(result.feature_importance * 100).toFixed(1)}% to the model's decision-making logic.
+              </div>
             </div>
 
             {/* A/B Test Simulator */}

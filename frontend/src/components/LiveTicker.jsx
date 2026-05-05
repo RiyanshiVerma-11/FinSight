@@ -93,7 +93,7 @@ export default function LiveTicker() {
                   <span className="badge" style={{ background: `${color}12`, color, border: `1px solid ${color}25`, fontSize: '0.68rem' }}>
                     {ev.event_type.replace('_', ' ')}
                   </span>
-                  {ev.amount && <span style={{ color: '#64748b', fontSize: '0.78rem' }}>${ev.amount.toFixed(2)}</span>}
+                  {ev.amount && <span style={{ color: '#64748b', fontSize: '0.78rem' }}>₹{ev.amount.toFixed(2)}</span>}
                 </div>
                 {ev.churn_delta !== 0 && ev.churn_delta != null && (
                   <span style={{ fontSize: '0.72rem', fontWeight: 700, color: ev.churn_delta > 0 ? '#f43f5e' : '#10b981' }}>

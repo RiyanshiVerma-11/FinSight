@@ -29,11 +29,11 @@ def _build_prompt(segment_stats, drivers, shap_data):
 ## Churn Driver Importance (from SHAP analysis):
 """
     for d in drivers[:5]:
-        prompt += f"- {d[0]}: importance={d[1]:.4f}\n"
+        prompt += f"- {d.get('feature', 'Unknown')}: importance={d.get('importance', 0):.4f}\n"
 
     prompt += "\n## Segment Statistics:\n"
     for seg in segment_stats[:5]:
-        prompt += f"- {seg.get('segment','?')}: {seg.get('count',0)} users, avg churn={seg.get('avg_churn',0):.1%}, avg monetary=${seg.get('avg_monetary',0):,.0f}\n"
+        prompt += f"- {seg.get('segment','?')}: {seg.get('count',0)} users, avg churn={seg.get('avg_churn',0):.1%}, avg monetary=₹{seg.get('avg_monetary',0):,.0f}\n"
 
     if shap_data:
         prompt += "\n## SHAP Feature Impact:\n"
@@ -100,19 +100,21 @@ def _fallback_hypotheses(segment_stats, drivers):
         worst = max(segment_stats, key=lambda s: s.get('avg_churn', 0))
         hypotheses.append({
             "title": f"Targeted Retention for '{worst.get('segment', 'Unknown')}' Segment",
-            "hypothesis": f"The '{worst.get('segment', '')}' segment ({worst.get('count', 0)} users) has the highest churn rate at {worst.get('avg_churn', 0)*100:.1f}%. Their avg spend is ${worst.get('avg_monetary', 0):,.0f}.",
-            "action": f"Launch a personalized retention campaign with 10% cashback for this segment within 48 hours of inactivity detection.",
-            "expected_impact": f"Reduce churn by 15-20% for {worst.get('count', 0)} users, recovering ~${worst.get('avg_monetary', 0) * worst.get('count', 0) * 0.15:,.0f} in revenue.",
+            "hypothesis": f"The '{worst.get('segment', '')}' segment ({worst.get('count', 0)} users) has the highest churn rate at {worst.get('avg_churn', 0)*100:.1f}%. Their avg spend is ₹{worst.get('avg_monetary', 0):,.0f}.",
+            "action": f"Launch a personalized retention campaign with ₹150 incentive for this segment within 48 hours of inactivity detection.",
+            "expected_impact": f"Reduce churn by 15-20% for {worst.get('count', 0)} users, recovering ~₹{worst.get('avg_monetary', 0) * worst.get('count', 0) * 0.15:,.0f} in revenue.",
             "confidence": "High"
         })
 
     # Top driver hypothesis
     if drivers and len(drivers) > 0:
         top = drivers[0]
+        feature_name = top.get('feature', 'Unknown')
+        feature_imp = top.get('importance', 0)
         hypotheses.append({
-            "title": f"Address Primary Churn Driver: {top[0]}",
-            "hypothesis": f"{top[0]} is the #1 churn predictor (importance: {top[1]*100:.1f}%). Users with extreme {top[0].lower()} values are disproportionately churning.",
-            "action": f"Implement automated {top[0].lower()}-based triggers: send re-engagement nudges when {top[0].lower()} crosses the 75th percentile threshold.",
+            "title": f"Address Primary Churn Driver: {feature_name}",
+            "hypothesis": f"{feature_name} is the #1 churn predictor (importance: {feature_imp*100:.1f}%). Users with extreme {feature_name.lower()} values are disproportionately churning.",
+            "action": f"Implement automated {feature_name.lower()}-based triggers: send re-engagement nudges when behavior deviates from the norm.",
             "expected_impact": "10-25% reduction in at-risk user churn within 30 days.",
             "confidence": "High"
         })

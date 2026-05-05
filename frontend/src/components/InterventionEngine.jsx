@@ -102,13 +102,21 @@ export default function InterventionEngine({ segments, segChurn }) {
           </thead>
           <tbody>
             {segmentList.map(([seg, count], i) => {
-              const cfg = INTERVENTION_MAP[seg] || DEFAULT_INTERVENTION;
-              const personaName = PERSONA_MAP[seg] || seg;
               const segData = segChurn?.find(s => s.segment === seg);
               const churnPct = segData ? (segData.avg_churn * 100).toFixed(1) : '—';
-
-              const isProfitable = cfg.est_ltv > cfg.cost;
+              const avgMonetary = segData?.avg_monetary || 1000;
+              
+              // Dynamic LTV: Current Spend + (Spend * Retention Probability * Duration Multiplier)
+              const estLtv = Math.round(avgMonetary + (avgMonetary * (1 - (segData?.avg_churn || 0)) * 1.5));
+              
+              // Dynamic Cost: Base + Risk Factor
+              const baseCost = 100;
+              const cost = Math.round(baseCost + (avgMonetary * 0.005) + ((segData?.avg_churn || 0) * avgMonetary * 0.01));
+              
+              const isProfitable = estLtv > cost;
               const roiColor = isProfitable ? '#10b981' : '#f43f5e';
+              const cfg = INTERVENTION_MAP[seg] || DEFAULT_INTERVENTION;
+              const personaName = PERSONA_MAP[seg] || seg;
 
               return (
                 <motion.tr
@@ -160,7 +168,7 @@ export default function InterventionEngine({ segments, segChurn }) {
                         {isProfitable ? 'PROFITABLE' : 'NON-PROFITABLE'}
                       </span>
                       <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
-                        Cost: ₹{cfg.cost} | LTV: ₹{cfg.est_ltv}
+                        Cost: ₹{cost} | LTV: ₹{estLtv}
                       </span>
                     </div>
                   </td>
