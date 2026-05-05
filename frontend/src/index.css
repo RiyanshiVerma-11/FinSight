@@ -398,6 +398,13 @@ h2 {
   border-color: var(--primary-light);
 }
 
+.intervention-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
 /* ───────── Table ───────── */
 .data-table {
   width: 100%;
@@ -534,6 +541,47 @@ h2 {
   .controls-row > * {
     width: 100%;
     justify-content: center;
+  }
+
+  /* Executive View Responsive Fixes */
+  .exec-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 1.5rem !important;
+    padding: 1.5rem !important;
+  }
+  .exec-header > div:last-child {
+    width: 100%;
+    justify-content: space-between;
+    text-align: left !important;
+  }
+  .exec-header .btn-export {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .exec-kpi-row {
+    grid-template-columns: 1fr !important;
+    padding: 1.5rem 1.5rem 0 !important;
+    gap: 1rem !important;
+  }
+
+  .exec-grid-main {
+    grid-template-columns: 1fr !important;
+    padding: 1rem 1.5rem !important;
+    gap: 1.5rem !important;
+  }
+
+  .exec-section-title {
+    font-size: 1rem !important;
+  }
+
+  .exec-seg-list {
+    grid-template-columns: 1fr !important;
+  }
+
+  .exec-kpi-card {
+    padding: 1.25rem !important;
   }
 }
 
