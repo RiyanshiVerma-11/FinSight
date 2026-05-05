@@ -242,6 +242,7 @@ body::after {
   box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
+  min-width: 0;
 }
 .card:hover {
   box-shadow: var(--shadow-lg);
@@ -249,9 +250,17 @@ body::after {
   transform: translateY(-2px);
 }
 
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
 /* ───────── Stat Card ───────── */
 .stat-card {
   position: relative;
+  grid-column: span 3;
 }
 .stat-card::after {
   content: '';
@@ -493,17 +502,38 @@ h2 {
   .dashboard-grid {
     grid-template-columns: repeat(6, 1fr);
   }
+  .stats-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
   .app-container {
     padding: 1rem;
+    padding-bottom: 8rem;
   }
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
   .dashboard-grid > * {
     grid-column: span 1 !important;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .stat-card {
+    grid-column: span 1 !important;
+  }
+  .chart-wrapper {
+    height: 250px;
+  }
+  .controls-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .controls-row > * {
+    width: 100%;
+    justify-content: center;
   }
 }
 

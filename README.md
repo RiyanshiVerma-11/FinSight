@@ -20,7 +20,7 @@
 
 ---
 
-## 🏆 Competitive Differentiation
+## Competitive Differentiation
 
 | Dimension | Standard Project (Top 10%) | **FinSight v3.0 (Top 1%)** |
 |-----------|---------------------------|--------------------------|
@@ -39,174 +39,174 @@
 
 ---
 
-## ✨ Feature Catalogue
+## Feature Catalogue
 
-### 1. 🧠 Dynamic RFM Intelligence
+### 1. Dynamic RFM Intelligence
 - **Inter-Purchase Interval (IPI)**: Median days between purchases per user. Detects *silently churning* users whose inactivity exceeds their own behavioral norm.
 - **Recency Deviation**: `actual_recency − expected_recency_from_IPI` — personalized churn signal beyond raw recency.
 - **Monetary Velocity**: `total_spent / account_age_days` — distinguishes high-value vs. high-volume users.
 - Quantile-based RFM scoring (1–5) + K-Means clustering with Silhouette Score validation.
 
-### 2. 🔍 Per-User Local SHAP Explainability
+### 2. Per-User Local SHAP Explainability
 - Click any user row → modal renders their individual SHAP waterfall.
 - *"85% churn risk BECAUSE Recency pushes risk +0.187, Frequency reduces it −0.042"*
-- Color-coded bars: 🔴 increases churn, 🟢 decreases churn. Revenue-at-risk per user.
+- Color-coded bars: increases churn, decreases churn. Revenue-at-risk per user.
 
-### 3. 🎯 What-If Counterfactual Simulation Engine
+### 3. What-If Counterfactual Simulation Engine
 - **Manual mode**: Segment → Feature → % delta → Run → instant impact.
 - **Campaign Simulator** *(new)*: Pick from 5 real campaigns:
-  - 💰 ₹100 Cashback · 📱 Push Notification · 🏷️ Plan Discount (20%) · 🏆 Loyalty Points · 📧 Re-engagement Email
+ - ₹100 Cashback · Push Notification · Plan Discount (20%) · Loyalty Points · Re-engagement Email
 - **Impact Hero Card**: Animated *"You just saved ₹8,40,000"* banner.
 - **Impact Summary**: Churn ↓ · Revenue Protected · Users Saved.
 
-### 4. 📊 Top 3 Churn Drivers (Global) *(new)*
+### 4. Top 3 Churn Drivers (Global) *(new)*
 Prominent animated bar section showing global SHAP impact:
 ```
-🔴 Recency deviation   → 42% impact  ↑ increases churn
-🔴 Frequency drop      → 31% impact  ↑ increases churn
-🟢 High monetary       → 18% impact  ↓ reduces churn
+ Recency deviation  → 42% impact ↑ increases churn
+ Frequency drop   → 31% impact ↑ increases churn
+ High monetary    → 18% impact ↓ reduces churn
 ```
 
-### 5. 🎮 Intervention Engine *(new)*
+### 5. Intervention Engine *(new)*
 Prescriptive action playbook — segment-specific, judge-ready table:
 
 | Segment | Problem | Recommended Action | Urgency |
 |---------|---------|-------------------|---------|
-| 🚨 At Risk | High recency deviation | Send ₹100 cashback offer | CRITICAL |
-| 💎 Loyal | Frequency plateau | Launch loyalty reward program | HIGH |
-| 👑 Champions | Needs nurturing | Exclusive VIP upgrade offer | MEDIUM |
-| 😴 Hibernating | High IPI deviation | Re-engagement email + push | HIGH |
-| 💔 Lost | Very high churn probability | Win-back campaign | CRITICAL |
+| At Risk | High recency deviation | Send ₹100 cashback offer | CRITICAL |
+| Loyal | Frequency plateau | Launch loyalty reward program | HIGH |
+| Champions | Needs nurturing | Exclusive VIP upgrade offer | MEDIUM |
+| Hibernating | High IPI deviation | Re-engagement email + push | HIGH |
+| Lost | Very high churn probability | Win-back campaign | CRITICAL |
 
-### 6. 🏆 Executive Dashboard Mode *(new)*
+### 6. Executive Dashboard Mode *(new)*
 One-screen judge/CEO view (press **"Exec View"** button in header):
 - **4 KPI cards**: Total Users · Avg Churn Risk · Revenue at Risk · Potential Revenue Saved
 - **Before vs After FinSight** comparison table
 - **Top Priority Action** with estimated $ impact
 - **Churn by Segment** animated bars
 
-### 7. 🥇 Priority Score Ranking *(new)*
+### 7. Priority Score Ranking *(new)*
 User table sorted by `Priority Score = churn_probability × (LTV / max_LTV) × engagement_sensitivity`:
-- 🥇🥈🥉 medals for top 3 at-risk users
-- **🔥 URGENT / ⚠️ HIGH / 📌 MONITOR** badges
+- medals for top 3 at-risk users
+- ** URGENT / HIGH / MONITOR** badges
 - *"Top 50 Users to Save TODAY"* — actionable daily list for ops teams
 
-### 8. 🧠 SHAP-Linked AI Hypotheses *(upgraded)*
+### 8. SHAP-Linked AI Hypotheses *(upgraded)*
 Each AI hypothesis now displays its SHAP context chip:
 ```
 "Because Recency ↑ (42% impact) → offer cashback campaign"
 ```
 Ties the LLM reasoning directly to quantitative ML drivers — making AI recommendations auditable.
 
-### 9. 📡 Real-Time WebSocket Event Stream
+### 9. Real-Time WebSocket Event Stream
 Simulated fintech events: transactions, logins, plan downgrades, support tickets — with live churn impact indicators and animated ticker.
 
-### 10. 📈 Cohort Retention Heatmap
+### 10. Cohort Retention Heatmap
 User cohorts grouped by acquisition month. Color-coded retention matrix across M0–M12.
 
-### 11. 💡 Predicted LTV
+### 11. Predicted LTV
 Heuristic LTV model: `historical_spend × (1 − churn_probability) × tenure_multiplier`.
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```mermaid
 graph TB
-    classDef frontend fill:#eef2ff,stroke:#6366f1,stroke-width:2px
-    classDef backend fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
-    classDef engine fill:#fdf4ff,stroke:#9333ea,stroke-width:2px
-    classDef infra fill:#fff7ed,stroke:#ea580c,stroke-width:2px
+  classDef frontend fill:#eef2ff,stroke:#6366f1,stroke-width:2px
+  classDef backend fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
+  classDef engine fill:#fdf4ff,stroke:#9333ea,stroke-width:2px
+  classDef infra fill:#fff7ed,stroke:#ea580c,stroke-width:2px
 
-    subgraph FE ["Frontend (React 19 + Vite 8)"]
-        HD[Header + Exec Button]
-        ED[Executive Dashboard Modal]
-        ST[Stats + Segment Charts]
-        WI[What-If + Campaign Simulator]
-        IE[Intervention Engine Table]
-        HY[SHAP-Linked Hypotheses]
-        UT[Priority-Ranked User Table]
-        LT[Live WebSocket Ticker]
-        SM[SHAP User Modal]
-    end
+  subgraph FE ["Frontend (React 19 + Vite 8)"]
+    HD["Header + Exec Button"]
+    ED["Executive Dashboard Modal"]
+    ST["Stats + Segment Charts"]
+    WI["What-If + Campaign Simulator"]
+    IE["Intervention Engine Table"]
+    HY["SHAP-Linked Hypotheses"]
+    UT["Priority-Ranked User Table"]
+    LT["Live WebSocket Ticker"]
+    SM["SHAP User Modal"]
+  end
 
-    subgraph API ["Backend API (FastAPI)"]
-        AN[POST /analyze]
-        AL[GET /analyze-local]
-        DD[GET /demo-data]
-        US[GET /user-shap/{id}]
-        WF[POST /whatif]
-        LH[GET /llm-hypotheses]
-        WS[WS /stream]
-        LD[GET /list-datasets]
-        MV[GET /models]
-    end
+  subgraph API ["Backend API (FastAPI)"]
+    AN["POST /analyze"]
+    AL["GET /analyze-local"]
+    DD["GET /demo-data"]
+    US["GET /user-shap/{id}"]
+    WF["POST /whatif"]
+    LH["GET /llm-hypotheses"]
+    WS["WS /stream"]
+    LD["GET /list-datasets"]
+    MV["GET /models"]
+  end
 
-    subgraph AE ["Analytics Engine"]
-        RFM[Dynamic RFM + IPI]
-        CM[RF + XGBoost Ensemble]
-        SH[SHAP TreeExplainer]
-        WIF[Counterfactual Engine]
-        RAR[Revenue at Risk]
-        COH[Cohort Analysis]
-        LTV[Predicted LTV]
-    end
+  subgraph AE ["Analytics Engine"]
+    RFM["Dynamic RFM + IPI"]
+    CM["RF + XGBoost Ensemble"]
+    SH["SHAP TreeExplainer"]
+    WIF["Counterfactual Engine"]
+    RAR["Revenue at Risk"]
+    COH["Cohort Analysis"]
+    LTV["Predicted LTV"]
+  end
 
-    subgraph SVC ["Services"]
-        LLM[LLM Engine — Groq/Llama3]
-        DG[Fintech Data Generator]
-        MVM[Model Version Manager]
-    end
+  subgraph SVC ["Services"]
+    LLM["LLM Engine — Groq/Llama3"]
+    DG["Fintech Data Generator"]
+    MVM["Model Version Manager"]
+  end
 
-    FE -->|REST + WS| API
-    API --> AE
-    AE --> SVC
+  FE -->|REST + WS| API
+  API --> AE
+  AE --> SVC
 
-    class FE,HD,ED,ST,WI,IE,HY,UT,LT,SM frontend
-    class API,AN,AL,DD,US,WF,LH,WS,LD,MV backend
-    class AE,RFM,CM,SH,WIF,RAR,COH,LTV engine
-    class SVC,LLM,DG,MVM infra
+  class FE,HD,ED,ST,WI,IE,HY,UT,LT,SM frontend
+  class API,AN,AL,DD,US,WF,LH,WS,LD,MV backend
+  class AE,RFM,CM,SH,WIF,RAR,COH,LTV engine
+  class SVC,LLM,DG,MVM infra
 ```
 
 ### Analytics Pipeline
 
 ```
 Raw CSV/XLSX
-     │
-     ▼
+   │
+   ▼
 [1] Data Validation (Pydantic v2)
-     │
-     ▼
+   │
+   ▼
 [2] Dynamic RFM (IPI · Recency Deviation · Monetary Velocity · Quantile Scoring)
-     │
-     ▼
+   │
+   ▼
 [3] Temporal Split (past window → features | future window → labels) ← prevents leakage
-     │
-     ▼
+   │
+   ▼
 [4] Churn Model (Random Forest + XGBoost | Stratified 5-Fold CV | ROC-AUC)
-     │
-     ▼
+   │
+   ▼
 [5] SHAP (Global TreeExplainer + Per-user local values)
-     │
-     ▼
+   │
+   ▼
 [6] Revenue-at-Risk (monetary × churn_probability per user + segment rollup)
-     │
-     ▼
+   │
+   ▼
 [7] Priority Score (churn × revenue × engagement sensitivity → ranked list)
-     │
-     ▼
+   │
+   ▼
 [8] Intervention Engine (segment → problem → action playbook)
-     │
-     ▼
+   │
+   ▼
 [9] Hypothesis Generation (LLM via Groq API | SHAP-linked context | rule-based fallback)
-     │
-     ▼
+   │
+   ▼
 [10] JSON Response → React Dashboard
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
@@ -227,7 +227,7 @@ Raw CSV/XLSX
 
 ---
 
-## 📦 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Python 3.10+ and Node.js 18+, **or** Docker Desktop
@@ -255,7 +255,7 @@ docker-compose up --build
 # Backend
 cd backend
 python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 
@@ -273,7 +273,7 @@ export GROQ_API_KEY=gsk_your_key_here
 
 ---
 
-## 🧪 Testing
+## Testing
 
 FinSight ships with a comprehensive test suite covering the analytics engine, API endpoints, and UI components.
 
@@ -300,7 +300,7 @@ pytest tests/ -v --tb=short
 ```bash
 cd frontend
 npm test
-npm run test:coverage   # Coverage report
+npm run test:coverage  # Coverage report
 ```
 
 **Test coverage:**
@@ -322,7 +322,7 @@ cd ../frontend && npm test -- --run
 
 ---
 
-## 📊 API Reference
+## API Reference
 
 ### Core Endpoints
 
@@ -345,58 +345,58 @@ cd ../frontend && npm test -- --run
 ```json
 // Request
 {
-  "segment": "At Risk",
-  "feature": "frequency",
-  "delta_pct": 20
+ "segment": "At Risk",
+ "feature": "frequency",
+ "delta_pct": 20
 }
 
 // Response
 {
-  "segment": "At Risk",
-  "feature": "frequency",
-  "delta_pct": 20,
-  "original_churn": 0.72,
-  "simulated_churn": 0.54,
-  "churn_reduction_pct": -18.0,
-  "users_affected": 312,
-  "revenue_protected": 840000,
-  "recommendation": "Increasing frequency by 20% could save ₹8,40,000..."
+ "segment": "At Risk",
+ "feature": "frequency",
+ "delta_pct": 20,
+ "original_churn": 0.72,
+ "simulated_churn": 0.54,
+ "churn_reduction_pct": -18.0,
+ "users_affected": 312,
+ "revenue_protected": 840000,
+ "recommendation": "Increasing frequency by 20% could save ₹8,40,000..."
 }
 ```
 
 **Analytics Payload (abbreviated)**
 ```json
 {
-  "summary": {
-    "total_users": 5000,
-    "avg_churn_risk": 0.34,
-    "segments": { "At Risk": 820, "Loyal": 1240, "Champions": 650 },
-    "segment_churn": [{ "segment": "At Risk", "avg_churn": 0.72, "revenue_at_risk": 240000 }],
-    "shap_data": [{ "feature": "recency_deviation", "importance": 0.42, "direction": "increases_churn" }],
-    "top_drivers": [{ "feature": "recency_deviation", "importance": 0.42, "direction": "increases_churn" }],
-    "revenue_at_risk": { "total": 1200000 },
-    "hypotheses": [{ "driver": "Recency", "hypothesis": "...", "action": "..." }],
-    "metrics": { "roc_auc": 0.87, "cv_auc_mean": 0.85 },
-    "cohort_data": [],
-    "lifecycle_stages": {}
-  },
-  "users": [
-    {
-      "user_id": "U001",
-      "segment": "At Risk",
-      "lifecycle": "Declining",
-      "churn_probability": 0.78,
-      "predicted_ltv": 12400,
-      "monetary": 8500,
-      "frequency_score": 0.4
-    }
-  ]
+ "summary": {
+  "total_users": 5000,
+  "avg_churn_risk": 0.34,
+  "segments": { "At Risk": 820, "Loyal": 1240, "Champions": 650 },
+  "segment_churn": [{ "segment": "At Risk", "avg_churn": 0.72, "revenue_at_risk": 240000 }],
+  "shap_data": [{ "feature": "recency_deviation", "importance": 0.42, "direction": "increases_churn" }],
+  "top_drivers": [{ "feature": "recency_deviation", "importance": 0.42, "direction": "increases_churn" }],
+  "revenue_at_risk": { "total": 1200000 },
+  "hypotheses": [{ "driver": "Recency", "hypothesis": "...", "action": "..." }],
+  "metrics": { "roc_auc": 0.87, "cv_auc_mean": 0.85 },
+  "cohort_data": [],
+  "lifecycle_stages": {}
+ },
+ "users": [
+  {
+   "user_id": "U001",
+   "segment": "At Risk",
+   "lifecycle": "Declining",
+   "churn_probability": 0.78,
+   "predicted_ltv": 12400,
+   "monetary": 8500,
+   "frequency_score": 0.4
+  }
+ ]
 }
 ```
 
 ---
 
-## 📊 Data Format
+## Data Format
 
 Upload your own CSV/XLSX with these columns:
 
@@ -411,7 +411,7 @@ Also supports **Online Retail II** format (auto-mapped: `Customer ID` → `user_
 
 ---
 
-## 🚀 Deployment
+## Deployment
 
 ### Render.com (Production)
 The project ships with a `render.yaml` for zero-config cloud deployment:
@@ -433,7 +433,7 @@ VITE_API_URL=https://your-backend.onrender.com
 
 ---
 
-## 📈 Business Value
+## Business Value
 
 | Problem | FinSight Solution | Quantified Impact |
 |---------|-----------------|-------------------|
@@ -446,52 +446,52 @@ VITE_API_URL=https://your-backend.onrender.com
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 FinSight/
 ├── backend/
-│   ├── main.py                 # FastAPI app, all endpoints
-│   ├── schemas.py              # Pydantic v2 request/response models
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   ├── datasets/               # Pre-loaded local datasets
-│   ├── models/                 # Versioned .pkl model artifacts
-│   ├── services/
-│   │   ├── analytics.py        # RFM, churn model, SHAP, cohort, LTV
-│   │   ├── llm_engine.py       # Groq + rule-based hypothesis engine
-│   │   └── data_generator.py   # Fintech event stream generator
-│   └── tests/
-│       ├── test_analytics.py
-│       ├── test_api.py
-│       ├── test_whatif.py
-│       ├── test_priority.py
-│       └── test_llm.py
+│  ├── main.py         # FastAPI app, all endpoints
+│  ├── schemas.py       # Pydantic v2 request/response models
+│  ├── requirements.txt
+│  ├── Dockerfile
+│  ├── datasets/        # Pre-loaded local datasets
+│  ├── models/         # Versioned .pkl model artifacts
+│  ├── services/
+│  │  ├── analytics.py    # RFM, churn model, SHAP, cohort, LTV
+│  │  ├── llm_engine.py    # Groq + rule-based hypothesis engine
+│  │  └── data_generator.py  # Fintech event stream generator
+│  └── tests/
+│    ├── test_analytics.py
+│    ├── test_api.py
+│    ├── test_whatif.py
+│    ├── test_priority.py
+│    └── test_llm.py
 ├── frontend/
-│   ├── src/
-│   │   ├── App.jsx             # Main dashboard orchestrator
-│   │   ├── index.css           # Design system + component styles
-│   │   └── components/
-│   │       ├── ExecutiveDashboard.jsx   # CEO/judge one-screen view
-│   │       ├── InterventionEngine.jsx   # Segment → action playbook
-│   │       ├── WhatIfPanel.jsx          # Simulation + campaign engine
-│   │       ├── ShapModal.jsx            # Per-user SHAP waterfall
-│   │       └── LiveTicker.jsx           # Real-time event feed
-│   ├── tests/
-│   │   ├── WhatIfPanel.test.jsx
-│   │   ├── ExecutiveDashboard.test.jsx
-│   │   ├── InterventionEngine.test.jsx
-│   │   └── App.test.jsx
-│   ├── vite.config.js
-│   └── package.json
-├── render.yaml                 # Render.com deployment config
+│  ├── src/
+│  │  ├── App.jsx       # Main dashboard orchestrator
+│  │  ├── index.css      # Design system + component styles
+│  │  └── components/
+│  │    ├── ExecutiveDashboard.jsx  # CEO/judge one-screen view
+│  │    ├── InterventionEngine.jsx  # Segment → action playbook
+│  │    ├── WhatIfPanel.jsx     # Simulation + campaign engine
+│  │    ├── ShapModal.jsx      # Per-user SHAP waterfall
+│  │    └── LiveTicker.jsx      # Real-time event feed
+│  ├── tests/
+│  │  ├── WhatIfPanel.test.jsx
+│  │  ├── ExecutiveDashboard.test.jsx
+│  │  ├── InterventionEngine.test.jsx
+│  │  └── App.test.jsx
+│  ├── vite.config.js
+│  └── package.json
+├── render.yaml         # Render.com deployment config
 ├── docker-compose.yml
 └── README.md
 ```
 
 ---
 
-## 🔒 Code Quality
+## Code Quality
 
 - **Pydantic v2**: All API inputs/outputs strictly typed — no raw dicts in route handlers.
 - **Error boundaries**: Graceful fallback on LLM timeout, model failure, or malformed data.
@@ -501,7 +501,7 @@ FinSight/
 
 ---
 
-## 📜 License
+## License
 
 MIT © 2026 Riyanshi Verma
 
@@ -509,6 +509,6 @@ MIT © 2026 Riyanshi Verma
 
 <div align="center">
 
-Built with ❤️ for Fintech Partners · **FinSight v3.0** · Predict · Explain · Intervene
+Built with for Fintech Partners · **FinSight v3.0** · Predict · Explain · Intervene
 
 </div>

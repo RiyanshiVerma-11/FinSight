@@ -82,7 +82,7 @@ export default function WhatIfPanel({ segments }) {
             className={`whatif-mode-btn ${mode === 'campaign' ? 'active' : ''}`}
             onClick={() => setMode('campaign')}
           >
-            🚀 Campaigns
+            Campaigns
           </button>
         </div>
       </div>
@@ -178,7 +178,7 @@ export default function WhatIfPanel({ segments }) {
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 260, damping: 22 }}
             >
-              <div className="impact-hero-icon">💰</div>
+              <div className="impact-hero-icon">$</div>
               <div className="impact-hero-label">You just saved</div>
               <div className="impact-hero-value">
                 <AnimatedNumber value={result.revenue_protected || 0} prefix="₹" decimals={0} />
@@ -250,7 +250,7 @@ export default function WhatIfPanel({ segments }) {
             </div>
 
             <div className="whatif-recommendation">
-              <strong>💡 Recommendation:</strong> {result.recommendation}
+              <strong>Recommendation:</strong> {result.recommendation}
             </div>
           </motion.div>
         )}
