@@ -114,6 +114,7 @@ function App() {
   const [llmLoading, setLlmLoading] = useState(false);
   const [tourVersion, setTourVersion] = useState(0);
   const [activeTab, setActiveTab] = useState('executive');
+  const [error, setError] = useState(null);
 
   const [{ runTour, tourSteps }, setTourState] = useState({
     runTour: false,
@@ -152,11 +153,23 @@ function App() {
     catch { setDatasets([]); }
   };
 
-  const fetchDemoData = async () => {
+  const fetchDemoData = async (retryCount = 0) => {
     setLoading(true);
-    try { setData((await axios.get(`${API_URL}/demo-data`)).data); setSelectedDataset(""); }
-    catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    setError(null);
+    try {
+      setData((await axios.get(`${API_URL}/demo-data`)).data);
+      setSelectedDataset("");
+    } catch (e) {
+      console.error(e);
+      if (retryCount < 2) {
+        console.log(`Retrying demo data fetch... (${retryCount + 1})`);
+        setTimeout(() => fetchDemoData(retryCount + 1), 5000);
+      } else {
+        setError("The analytics engine is taking longer than usual to warm up. Please wait a moment and try clicking 'Demo Data' again.");
+      }
+    } finally {
+      if (retryCount >= 2 || !loading) setLoading(false);
+    }
   };
 
   const handleDatasetChange = async (e) => {
@@ -243,11 +256,14 @@ function App() {
 
   if (loading) return (
     <div className="app-container">
-      <div className="loader-container">
+      <div className="loader-container" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
         <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}>
-          <RefreshCw size={40} color="#6366f1" />
+          <RefreshCw size={60} color="#6366f1" />
         </motion.div>
-        <span className="loader-text">Analyzing your data…</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <span className="loader-text" style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>Initializing Intelligence Engine…</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>This may take up to 60 seconds on first load as we process historical datasets.</span>
+        </div>
       </div>
     </div>
   );
@@ -311,6 +327,25 @@ function App() {
           )}
         </div>
       </header>
+
+      {error && !data && (
+        <div style={{ 
+          margin: '2rem auto', 
+          maxWidth: '600px', 
+          padding: '2rem', 
+          background: 'rgba(244,63,94,0.05)', 
+          border: '1px solid #f43f5e', 
+          borderRadius: '1rem',
+          textAlign: 'center'
+        }}>
+          <AlertTriangle size={48} color="#f43f5e" style={{ marginBottom: '1rem' }} />
+          <h2 style={{ color: '#f43f5e', marginBottom: '0.5rem' }}>Engine Warmup in Progress</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>{error}</p>
+          <button className="btn-primary" onClick={() => fetchDemoData()}>
+            <RefreshCw size={17} /> Retry Initialization
+          </button>
+        </div>
+      )}
 
       {data && (
         <div className="tabs-container" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', overflowX: 'auto' }}>

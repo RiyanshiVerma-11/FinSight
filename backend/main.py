@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 _results_cache: dict = {}
 _demo_cache: dict | None = None
 _engine_cache: dict = {}  # store AnalyticsEngine instances per dataset
+_processing_status: dict = {} # Track currently processing files to prevent duplicate work
+_cache_lock = threading.Lock() # Lock for cache and status updates
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, "datasets")
@@ -191,20 +193,39 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
 # ──────────────────────────────────────
 def _warmup_dataset(fname):
     """Worker function for parallel warmup."""
+    with _cache_lock:
+        if fname in _results_cache or _processing_status.get(fname) == "processing":
+            return
+        _processing_status[fname] = "processing"
+
     fpath = os.path.join(DATASET_DIR, fname)
     logger.info(f"⏳ Background processing '{fname}'...")
     try:
         t0 = time.time()
         df = _read_file(fpath)
         df = _prepare_retail_df(df)
+        
+        # Memory Guard: Aggressive sampling for warmup on free tier
+        if len(df) > 50000:
+            logger.info(f"⚡ Warmup Sampling: Reducing '{fname}' to 50,000 rows for memory safety.")
+            df = df.sample(50000, random_state=42).sort_values('timestamp')
+
         required = ['user_id', 'timestamp', 'amount']
         if not all(c in df.columns for c in required):
             logger.warning(f"⚠️  Skipping '{fname}' - missing columns")
+            with _cache_lock:
+                _processing_status[fname] = "failed"
             return
-        _results_cache[fname] = _process_dataframe(df, cache_key=fname)
+
+        result = _process_dataframe(df, cache_key=fname)
+        with _cache_lock:
+            _results_cache[fname] = result
+            _processing_status[fname] = "ready"
         logger.info(f"✅ '{fname}' is now READY in {time.time() - t0:.1f}s")
     except Exception as e:
         logger.error(f"❌ Failed to process '{fname}': {e}")
+        with _cache_lock:
+            _processing_status[fname] = "failed"
 
 
 def _warmup_caches():
@@ -313,26 +334,46 @@ async def _analyze_all_live():
 async def get_default_data():
     """Returns the first available dataset as the default dashboard data."""
     # 1. Check if any real dataset is already cached
-    if _results_cache:
-        first_key = list(_results_cache.keys())[0]
-        logger.info(f"⚡ Serving '{first_key}' as default dashboard data")
-        return _results_cache[first_key]
+    with _cache_lock:
+        if _results_cache:
+            first_key = list(_results_cache.keys())[0]
+            logger.info(f"⚡ Serving '{first_key}' from cache")
+            return _results_cache[first_key]
 
-    # 2. If not cached but exists on disk, process it
+    # 2. If nothing cached, check if anything is on disk
     files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
-    if files:
-        fname = files[0]
+    if not files:
+        raise HTTPException(status_code=404, detail="No datasets available. Please upload a file.")
+
+    fname = files[0]
+    
+    # 3. Wait for the background process to finish if it's already working on it
+    max_wait = 40  # Wait up to 40 seconds (Render timeout is usually 30-60s)
+    wait_interval = 2
+    for _ in range(0, max_wait, wait_interval):
+        with _cache_lock:
+            if fname in _results_cache:
+                return _results_cache[fname]
+            if _processing_status.get(fname) != "processing":
+                # Not being processed yet? Trigger it (shouldn't happen with warmup, but just in case)
+                break 
+        logger.info(f"⌛ Waiting for '{fname}' to finish processing...")
+        await asyncio.sleep(wait_interval)
+
+    # 4. If we reached here and it's still not ready, try to process a SMALL SAMPLE synchronously
+    # this is a last-resort fallback to prevent a 504 timeout
+    logger.warning(f"⚠️  Wait timeout for '{fname}'. Triggering fast-sample fallback.")
+    try:
         fpath = os.path.join(DATASET_DIR, fname)
         df = _read_file(fpath)
         df = _prepare_retail_df(df)
-        # Sample for speed if needed
-        if len(df) > 100000:
-            df = df.sample(100000, random_state=42).sort_values('timestamp')
-        result = _process_dataframe(df, cache_key=fname)
-        _results_cache[fname] = result
+        # VERY small sample for immediate response
+        df = df.sample(min(len(df), 10000), random_state=42).sort_values('timestamp')
+        result = _process_dataframe(df, cache_key=f"demo_{fname}")
         return result
-
-    raise HTTPException(status_code=404, detail="No datasets available. Please upload a file.")
+    except Exception as e:
+        logger.error(f"Fallback processing failed: {e}")
+        raise HTTPException(status_code=503, detail="Server is warming up. Please refresh in a minute.")
 
 
 @app.post("/analyze")
