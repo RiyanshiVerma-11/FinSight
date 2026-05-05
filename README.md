@@ -50,11 +50,12 @@ Moves beyond "who will churn" to "who is profitable to save":
 - **Profitability Labeling**: Automatically flags users as `Profitable` or `Non-Profitable` for retention spend.
 - **Revenue Protection**: Prioritizes users where `(LTV × Churn Reduction) > CAC`.
 
-### 3. "Board Meeting" Export Engine *(new)*
+### 3. "Board Meeting" Export Engine *(updated)*
 Generate executive-ready reports with one click:
-- **PDF Export**: Capture the entire dashboard state into a professional document.
-- **CSV Export**: Full raw data export for custom internal analysis.
-- **Exec KPIs**: Highlights "Revenue at Risk" and "Potential Revenue Saved" for C-suite reporting.
+- **PDF Export**: Capture the entire app state (Header + All Content) into a professional multi-page document.
+- **6-Month Predictive Forecast**: Visualizes future churn risk vs. recovered revenue if recommendations are followed.
+- **Product Risk Breakdown**: Identifies specific "Leaky Bucket" products (e.g., Credit Cards, Savings) for targeted optimization.
+- **Strategic Recommendations**: Prescriptive C-Suite action items based on real-time ROI calculations.
 
 ### 4. Professional Persona Classification
 Standardized fintech segments for intuitive business communication:

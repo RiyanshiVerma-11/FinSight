@@ -1,16 +1,48 @@
-# React + Vite
+# FinSight v3.0 — Frontend Intelligence Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the high-performance React application that powers the **FinSight** analytics experience. Built with React 19 and Vite 8, it provides a real-time, tabbed interface for churn prediction, ROI simulation, and executive reporting.
 
-Currently, two official plugins are available:
+## 🚀 Core Frontend Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### 1. Retention ROI Simulation
+Interactive "What-If" engine that calculates the financial viability of retention strategies. 
+- Uses a local ROI calculator to compare **Intervention Cost** vs **Predicted LTV**.
+- Dynamic visual feedback for profitable/non-profitable segments.
 
-## React Compiler
+### 2. Executive View & Reporting
+A board-ready dashboard designed for the C-Suite.
+- **Predictive Trends**: 6-month churn vs. recovery forecast using Recharts.
+- **Revenue Leakage**: Product-mix risk analysis.
+- **One-Click PDF**: Full-dashboard export using `html2canvas` and `jsPDF`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 3. Explainable AI (SHAP)
+Deep integration with the backend SHAP engine.
+- Interactive waterfall charts for local user-level explainability.
+- Global feature dependence plots for macro trend analysis.
 
-## Expanding the ESLint configuration
+### 4. Interactive Onboarding
+A professional walkthrough powered by `react-joyride` that guides new users through the complex analytical sections of the platform.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🛠 Tech Stack
+
+- **Framework**: React 19 (Hooks, Context, Tabbed State)
+- **Bundler**: Vite 8 (HMR, Oxc Transform)
+- **Charts**: Recharts (Area, Bar, Pie, Scatter)
+- **Animations**: Framer Motion (Smooth layout transitions)
+- **Icons**: Lucide React
+- **Tour**: React Joyride
+- **PDF Export**: html2canvas + jsPDF
+
+## 📦 Getting Started
+
+### Local Setup
+1. `npm install`
+2. `npm run dev`
+
+### Production Build
+1. `npm run build`
+2. Result will be in the `dist/` directory.
+
+## 🧪 Testing
+Run component tests using Vitest and React Testing Library:
+`npm test`
