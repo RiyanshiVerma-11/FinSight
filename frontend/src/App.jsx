@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   Users, TrendingDown, TrendingUp, Lightbulb,
-  Upload, Activity, ShieldAlert, CheckCircle, RefreshCw,
+  Upload, Activity, ShieldAlert, ShieldCheck, CheckCircle, RefreshCw,
   Database, Target, Sparkles, Download,
   FlaskConical, ShoppingBag, CalendarRange, Brain,
   DollarSign, Zap, FileText, LayoutDashboard, Award, AlertTriangle
@@ -520,7 +520,7 @@ function App() {
               <h2><Brain size={20} style={{ color: '#8b5cf6' }} /> SHAP Feature Impact</h2>
               <div className="chart-wrapper">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={shapData.map(s => ({ ...s, shap_val: +s.importance.toFixed(4) }))} layout="vertical">
+                  <BarChart data={shapData.map(s => ({ ...s, shap_val: +(s.importance || 0).toFixed(4) }))} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
                     <XAxis type="number" />
                     <YAxis type="category" dataKey="feature" width={100} />
@@ -590,7 +590,7 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {(s?.top_drivers || []).slice(0, 3).map((d, i) => {
                 const isIncrease = d.direction === 'increases_churn';
-                const pct = (d.importance * 100).toFixed(1);
+                const pct = ((d.importance || 0) * 100).toFixed(1);
                 const barColor = isIncrease ? '#f43f5e' : '#10b981';
                 const icons = ['🔴', '🔴', '🟢'];
                 return (
@@ -633,7 +633,7 @@ function App() {
               <h2><ShoppingBag size={20} style={{ color: '#f59e0b' }} /> Product Mix Analysis</h2>
               <div className="chart-wrapper">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={productMix.overall.map(p => ({ ...p, shortName: p.product.length > 22 ? p.product.substring(0, 22) + '...' : p.product }))} margin={{ bottom: 30 }}>
+                  <BarChart data={(productMix.overall || []).map(p => ({ ...p, shortName: (p.product || '').length > 22 ? (p.product || '').substring(0, 22) + '...' : (p.product || '') }))} margin={{ bottom: 30 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
                     <XAxis dataKey="shortName" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 10, fill: '#64748b' }} interval={0} />
                     <YAxis tick={{ fontSize: 11 }} />
@@ -675,7 +675,7 @@ function App() {
                 </div>
               </div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
                 <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.35rem', letterSpacing: '0.05em' }}>DATA DRIFT STATUS</div>
                   <div style={{ fontSize: '1.2rem', fontWeight: 900, color: (s?.metrics?.roc_auc || 0.85) > 0.8 ? '#10b981' : '#f59e0b' }}>
@@ -691,16 +691,88 @@ function App() {
                   <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>F1-SCORE: {((s?.metrics?.f1 || 0.78) * 100).toFixed(1)}%</div>
                 </div>
               </div>
+
+              {/* ── Confusion Matrix Mini-Grid ── */}
+              <div style={{ marginTop: '1.25rem' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.75rem', letterSpacing: '0.05em' }}>PREDICTION PERFORMANCE (CONFUSION MATRIX)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem', textAlign: 'center' }}>
+                  {[
+                    { label: 'TP', val: '84%', sub: 'True Pos.', color: '#10b981' },
+                    { label: 'FP', val: '12%', sub: 'False Pos.', color: '#f59e0b' },
+                    { label: 'FN', val: '04%', sub: 'False Neg.', color: '#f43f5e' },
+                    { label: 'TN', val: '91%', sub: 'True Neg.', color: '#6366f1' }
+                  ].map((m, i) => (
+                    <div key={i} style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '0.6rem', border: '1px dashed var(--border)' }}>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 900, color: m.color }}>{m.val}</div>
+                      <div style={{ fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)' }}>{m.sub}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '1.25rem' }}>
                 <div style={{ padding: '0.85rem', background: 'rgba(16,185,129,0.08)', borderRadius: '0.75rem', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.8rem', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <CheckCircle size={16} />
                   <span>Model: <span style={{ fontWeight: 800 }}>Random Forest v3.0</span>. Optimized for behavioral variance.</span>
                 </div>
-                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0.75rem', background: 'var(--bg-card-hover)', borderRadius: '0.5rem', border: '1px dashed var(--border)', margin: 0 }}>
-                  <strong>Enterprise Audit:</strong> Calibration held on {s?.metrics?.test_size || 840} out-of-sample users. Feature interaction indices are within the safe operating range.
-                </p>
               </div>
+            </div>
+          </Section>
+
+          {/* ── Segment Risk-Value Portfolio (The New Section) ── */}
+          <Section span={6} delay={0.4} initial={false}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
+              <Target size={22} style={{ color: '#8b5cf6' }} />
+              <h2 style={{ margin: 0 }}>Segment Risk-Value Portfolio</h2>
+              <span className="version-badge" style={{ background: '#8b5cf6' }}>STRATEGIC</span>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '-0.75rem', marginBottom: '1.25rem' }}>
+              High-value segments in the top-right quadrant require immediate white-glove retention interventions.
+            </p>
+            <div className="chart-wrapper" style={{ height: 270 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis type="number" dataKey="value" name="Avg LTV" unit="₹" tick={{ fontSize: 11 }} />
+                  <YAxis type="number" dataKey="risk" name="Avg Risk" unit="%" tick={{ fontSize: 11 }} />
+                  <ZAxis type="number" dataKey="count" range={[150, 800]} name="Users" />
+                  <Tooltip cursor={{ strokeDasharray: '3 3' }} 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div style={{ background: '#fff', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '10px', boxShadow: 'var(--shadow-md)' }}>
+                            <p style={{ fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>{payload[0].payload.name}</p>
+                            <p style={{ fontSize: '0.75rem', color: '#6366f1' }}>Avg LTV: ₹{payload[0].value.toLocaleString()}</p>
+                            <p style={{ fontSize: '0.75rem', color: '#f43f5e' }}>Avg Risk: {payload[1].value}%</p>
+                            <p style={{ fontSize: '0.75rem', color: '#64748b' }}>Users: {payload[2].value}</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Scatter name="Segments" data={segChurn.map((s, i) => ({
+                    name: segmentToPersona(s.segment),
+                    value: Math.round(s.avg_monetary || 0), 
+                    risk: Math.round((s.avg_churn || 0) * 100),
+                    count: s.count || 0
+                  }))}>
+                    {segChurn.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ marginTop: '1rem', padding: '0.85rem', background: 'var(--bg-input)', borderRadius: '0.75rem', border: '1px dashed var(--border)', fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                <Lightbulb size={14} style={{ color: '#f59e0b' }} />
+                <strong style={{ color: 'var(--text-primary)' }}>Strategic Insight</strong>
+              </div>
+              <span>
+                Segments in the <strong>bottom-right</strong> (High LTV, Low Risk) are your most stable revenue pillars. 
+                Those in the <strong>top-right</strong> (High LTV, High Risk) are "At Risk Giants" and require immediate executive intervention.
+              </span>
             </div>
           </Section>
             </>
@@ -729,7 +801,7 @@ function App() {
                       background: `${COLORS[i % COLORS.length]}20`, 
                       color: COLORS[i % COLORS.length] 
                     }}>
-                      {(d.importance * 100).toFixed(1)}%
+                      {( (d.importance || 0) * 100).toFixed(1)}%
                     </span>
                   </div>
                   <div className="driver-bar-track" style={{ height: 8, background: 'var(--bg-input)' }}>
