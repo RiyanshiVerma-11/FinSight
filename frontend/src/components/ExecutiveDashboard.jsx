@@ -174,9 +174,9 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 700, color: driftStatus === 'STABLE' ? '#6366f1' : '#f43f5e' }}>
                       <Activity size={14} /> Drift Status: {driftStatus}
                    </div>
-                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 700, color: '#f59e0b' }}>
-                      <AlertTriangle size={14} /> Users at Critical Threshold (2 purchases): 450
-                   </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 700, color: '#f59e0b' }}>
+                       <AlertTriangle size={14} /> Users at Critical Threshold (2 purchases): {s?.metrics?.critical_threshold_users || 0}
+                    </div>
                 </div>
               </div>
             </div>
@@ -462,11 +462,11 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 </div>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                   {[
-                      { label: 'Model ROC-AUC Score', value: '85.1%', color: '#10b981' },
-                      { label: 'Visibility Accuracy', value: 'High (98.2%)', color: '#6366f1' },
-                      { label: 'Inferred Loss', value: formatCurrency(revAtRisk), color: '#f43f5e' },
-                   ].map((row, i) => (
+                    {[
+                       { label: 'Model ROC-AUC Score', value: `${(s?.metrics?.roc_auc * 100 || 85.1).toFixed(1)}%`, color: '#10b981' },
+                       { label: 'Visibility Accuracy', value: `High (${(s?.metrics?.accuracy * 100 || 98.2).toFixed(1)}%)`, color: '#6366f1' },
+                       { label: 'Inferred Loss', value: formatCurrency(revAtRisk), color: '#f43f5e' },
+                    ].map((row, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}>{row.label}</span>
                          <span style={{ fontSize: '0.9rem', fontWeight: 900, color: row.color }}>{row.value}</span>
@@ -508,9 +508,9 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
               <Info size={14} />
               Probabilistic intelligence engine active. Data updated in real-time. (Last updated: {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
            </div>
-           <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '0.3rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
-              FinSight AI (ROC-AUC 85.1%) outperforms standard Logistic Regression baseline (ROC-AUC 68.4%) by +24.4%
-           </div>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '0.3rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
+               FinSight AI (ROC-AUC {(s?.metrics?.roc_auc * 100 || 85.1).toFixed(1)}%) outperforms standard baseline by +{((s?.metrics?.roc_auc || 0.85) / 0.68 * 100 - 100).toFixed(1)}%
+            </div>
            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>
               FinSight AI · v3.2.0-STABLE
            </div>

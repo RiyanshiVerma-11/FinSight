@@ -183,6 +183,7 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         "hypotheses": hypotheses,
         "metrics": {
             "silhouette_score": float(silhouette),
+            "critical_threshold_users": int(len(final_df[final_df['frequency'] == 2])),
             **metrics,
         },
         "shap_data": shap_data,

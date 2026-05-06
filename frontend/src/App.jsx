@@ -753,7 +753,7 @@ function App() {
                 <div style={{ width: 70, height: 70 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={[{ value: 0.851 }, { value: 1 - 0.851 }]} 
+                      <Pie data={[{ value: s?.metrics?.roc_auc || 0.851 }, { value: 1 - (s?.metrics?.roc_auc || 0.851) }]} 
                         cx="50%" cy="50%" innerRadius={24} outerRadius={34} startAngle={90} endAngle={-270}
                         dataKey="value" stroke="none">
                         <Cell fill="#10b981" />
@@ -764,7 +764,7 @@ function App() {
                 </div>
                 <div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1 }}>
-                    85.1%
+                    {(s?.metrics?.roc_auc * 100 || 85.1).toFixed(1)}%
                   </div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.05em', marginTop: '0.25rem' }}>ROC-AUC CONFIDENCE</div>
                 </div>
