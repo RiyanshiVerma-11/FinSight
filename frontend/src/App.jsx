@@ -67,15 +67,7 @@ const retentionColor = (val) => {
 
 const getPersona = (u) => {
   if (!u) return '';
-  const risk = u.churn_probability || 0;
-  const ltv = u.predicted_ltv || u.monetary || 0;
-  const recency = u.recency || 0;
-
-  if (risk > 0.6 && ltv > 500) return 'The Fading Star';
-  if (recency > 90 || risk > 0.8) return 'The Hibernator';
-  if (risk < 0.3 && ltv > 1000) return 'The Loyal Giant';
-  if (ltv < 100) return 'The Price Shopper';
-  return 'The Regular';
+  return segmentToPersona(u.segment);
 };
 
 const getROIStatus = (u) => {
@@ -96,11 +88,15 @@ const getROIStatus = (u) => {
 };
 
 const segmentToPersona = (name) => {
-  const s = name.toLowerCase();
-  if (s.includes('high')) return 'Fading Stars';
-  if (s.includes('low') || s.includes('new')) return 'Price Shoppers';
-  if (s.includes('mid') || s.includes('loyal')) return 'Loyal Giants';
-  return 'Regulars';
+  if (!name) return 'Unknown';
+  const PERSONA_MAP = {
+    'At Risk': 'The Fading Star',
+    'Loyalists': 'The Steady Pillar',
+    'Champions': 'The Loyal Giant',
+    'Promising': 'The Rising Star',
+    'Hibernating': 'The Lost Soul',
+  };
+  return PERSONA_MAP[name] || name;
 };
 
 function App() {
@@ -442,9 +438,9 @@ function App() {
                 trend="Across all segments" trendClass="stat-trend--down" trendIcon={TrendingDown} delay={0.05} />
 
               <StatCard icon={Target} iconClass="stat-icon--cyan" cardClass="stat-card--cyan"
-                label="Test AUC-ROC" value={`${(s?.metrics?.roc_auc * 100 || 0).toFixed(1)}%`}
-                trend={`CV: ${(s?.metrics?.cv_auc_mean * 100 || 0).toFixed(1)}%`}
-                trendClass="stat-trend--neutral" trendIcon={CheckCircle} delay={0.1} />
+                label="Model Integrity" value={`${(s?.metrics?.roc_auc * 100 || 0).toFixed(1)}%`}
+                trend={`Gini: ${(s?.metrics?.gini || 0).toFixed(2)}`}
+                trendClass="stat-trend--neutral" trendIcon={ShieldCheck} delay={0.1} />
 
               <StatCard icon={DollarSign} iconClass="stat-icon--amber" cardClass="stat-card--amber"
                 label="Revenue at Risk" value={`₹${(rar?.total || 0).toLocaleString()}`}
@@ -577,7 +573,9 @@ function App() {
               <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '1rem' }}>SHAP Dependence</span>
             </div>
             <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '-0.75rem', marginBottom: '1rem' }}>
-              Amount × Tenure Interaction: High tenure users with high transaction amounts show the lowest churn risk.
+              {s?.top_drivers?.length >= 2 
+                ? `${s.top_drivers[0].feature} × ${s.top_drivers[1].feature} Interaction: Analyzing how the top two behavioral signals correlate to predict systemic churn risk.`
+                : "Feature Interaction: Analyzing how behavioral signals correlate to predict systemic churn risk."}
             </p>
             <div className="chart-wrapper" style={{ padding: '0.5rem', height: 250 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -651,10 +649,35 @@ function App() {
                       />
                     </div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                      {d.direction === 'increases_churn' 
-                        ? `CRITICAL ALERT: High ${d.feature} is significantly pushing users towards churn. Requires immediate retention logic.`
-                        : `RETENTION SIGNAL: Stable ${d.feature} levels are currently protecting your revenue stream and reducing risk.`
-                      }
+                      {(() => {
+                        const isIncrease = d.direction === 'increases_churn';
+                        const f = d.feature.toLowerCase();
+                        
+                        if (f.includes('recency')) {
+                          return isIncrease 
+                            ? `CRITICAL ALERT: Prolonged inactivity (High Recency) is the strongest indicator of imminent churn.`
+                            : `RETENTION SIGNAL: Recent engagement levels are currently stabilizing this user segment.`;
+                        }
+                        if (f.includes('frequency')) {
+                          return isIncrease 
+                            ? `ALERT: Decreasing transaction frequency is creating a high-risk churn pattern.`
+                            : `SHIELD: High purchase frequency is significantly protecting this segment from attrition.`;
+                        }
+                        if (f.includes('variance') || f.includes('volatility')) {
+                          return isIncrease 
+                            ? `ALERT: Irregular buying patterns (High Variance) suggest a breakdown in customer habit.`
+                            : `SHIELD: Consistent buying intervals are a strong indicator of long-term loyalty.`;
+                        }
+                        if (f.includes('value') || f.includes('spend')) {
+                          return isIncrease 
+                            ? `STRATEGIC ALERT: We are seeing high-value attrition. Our biggest spenders are exhibiting churn behaviors.`
+                            : `RETENTION SIGNAL: High-value commitment is currently anchoring these users to the platform.`;
+                        }
+                        
+                        return isIncrease 
+                          ? `CRITICAL ALERT: High ${d.feature} levels are significantly pushing users towards churn.`
+                          : `RETENTION SIGNAL: Stable ${d.feature} levels are currently protecting your revenue stream.`;
+                      })()}
                     </div>
                   </motion.div>
                 );
@@ -680,6 +703,8 @@ function App() {
                 </ResponsiveContainer>
               </div>
             </Section>
+            </>
+          )}
             
           <Section span={6} delay={0.34}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
@@ -693,7 +718,7 @@ function App() {
                 <div style={{ width: 70, height: 70 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={[{ value: s?.metrics?.roc_auc || 0.85 }, { value: 1 - (s?.metrics?.roc_auc || 0.85) }]} 
+                      <Pie data={[{ value: s?.metrics?.roc_auc || 0 }, { value: 1 - (s?.metrics?.roc_auc || 0) }]} 
                         cx="50%" cy="50%" innerRadius={24} outerRadius={34} startAngle={90} endAngle={-270}
                         dataKey="value" stroke="none">
                         <Cell fill="#10b981" />
@@ -704,7 +729,7 @@ function App() {
                 </div>
                 <div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1 }}>
-                    {((s?.metrics?.roc_auc || 0.85) * 100).toFixed(1)}%
+                    {s?.metrics?.roc_auc ? `${(s.metrics.roc_auc * 100).toFixed(1)}%` : '---%'}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.05em', marginTop: '0.25rem' }}>ROC-AUC CONFIDENCE</div>
                 </div>
@@ -713,17 +738,17 @@ function App() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
                 <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.35rem', letterSpacing: '0.05em' }}>DATA DRIFT STATUS</div>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: (s?.metrics?.roc_auc || 0.85) > 0.8 ? '#10b981' : '#f59e0b' }}>
-                    {(s?.metrics?.roc_auc || 0.85) > 0.8 ? 'NO DRIFT' : 'LOW DRIFT'}
+                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: s?.metrics?.drift?.status === 'NO DRIFT' ? '#10b981' : s?.metrics?.drift?.status === 'LOW DRIFT' ? '#f59e0b' : '#f43f5e' }}>
+                    {s?.metrics?.drift?.status || 'N/A'}
                   </div>
-                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>P-VALUE: {(Math.random() * 0.1 + 0.9).toFixed(3)}</div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>P-VALUE: {(s?.metrics?.drift?.avg_p_value ?? 0).toFixed(4)}</div>
                 </div>
                 <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.35rem', letterSpacing: '0.05em' }}>CROSS-VALIDATION</div>
                   <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#6366f1' }}>
-                    {((s?.metrics?.cv_auc_mean || 0.82) * 100).toFixed(1)}%
+                    {s?.metrics?.cv_auc_mean ? `${(s.metrics.cv_auc_mean * 100).toFixed(1)}%` : 'N/A'}
                   </div>
-                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>F1-SCORE: {((s?.metrics?.f1 || 0.78) * 100).toFixed(1)}%</div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>F1-SCORE: {s?.metrics?.f1 ? `${(s.metrics.f1 * 100).toFixed(1)}%` : 'N/A'}</div>
                 </div>
               </div>
 
@@ -731,12 +756,15 @@ function App() {
               <div style={{ marginTop: '1.25rem' }}>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.75rem', letterSpacing: '0.05em' }}>PREDICTION PERFORMANCE (CONFUSION MATRIX)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem', textAlign: 'center' }}>
-                  {[
-                    { label: 'TP', val: '84%', sub: 'True Pos.', color: '#10b981' },
-                    { label: 'FP', val: '12%', sub: 'False Pos.', color: '#f59e0b' },
-                    { label: 'FN', val: '04%', sub: 'False Neg.', color: '#f43f5e' },
-                    { label: 'TN', val: '91%', sub: 'True Neg.', color: '#6366f1' }
-                  ].map((m, i) => (
+                  {(() => {
+                    const cm = s?.metrics?.confusion_matrix;
+                    return [
+                      { label: 'TP', val: cm ? `${cm.tp_rate}%` : '—', sub: `True Pos.${cm ? ` (${cm.tp})` : ''}`, color: '#10b981' },
+                      { label: 'FP', val: cm ? `${cm.fp_rate}%` : '—', sub: `False Pos.${cm ? ` (${cm.fp})` : ''}`, color: '#f59e0b' },
+                      { label: 'FN', val: cm ? `${cm.fn_rate}%` : '—', sub: `False Neg.${cm ? ` (${cm.fn})` : ''}`, color: '#f43f5e' },
+                      { label: 'TN', val: cm ? `${cm.tn_rate}%` : '—', sub: `True Neg.${cm ? ` (${cm.tn})` : ''}`, color: '#6366f1' }
+                    ];
+                  })().map((m, i) => (
                     <div key={i} style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '0.6rem', border: '1px dashed var(--border)' }}>
                       <div style={{ fontSize: '0.9rem', fontWeight: 900, color: m.color }}>{m.val}</div>
                       <div style={{ fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)' }}>{m.sub}</div>
@@ -748,7 +776,7 @@ function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '1.25rem' }}>
                 <div style={{ padding: '0.85rem', background: 'rgba(16,185,129,0.08)', borderRadius: '0.75rem', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.8rem', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <CheckCircle size={16} />
-                  <span>Model: <span style={{ fontWeight: 800 }}>Random Forest v3.0</span>. Optimized for behavioral variance.</span>
+                  <span>Model: <span style={{ fontWeight: 800 }}>{s?.model_info?.name || 'Random Forest'}</span>. {s?.model_info?.features_used?.length || 0} features · {s?.metrics?.train_size || 0} train samples.</span>
                 </div>
               </div>
             </div>
@@ -808,49 +836,6 @@ function App() {
                 Segments in the <strong>bottom-right</strong> (High LTV, Low Risk) are your most stable revenue pillars. 
                 Those in the <strong>top-right</strong> (High LTV, High Risk) are "At Risk Giants" and require immediate executive intervention.
               </span>
-            </div>
-          </Section>
-            </>
-          )}
-
-          <Section span={12} delay={0.35}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
-              <Target size={20} style={{ color: '#f43f5e' }} />
-              <h2 style={{ margin: 0 }}>Primary Churn Drivers</h2>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
-              {s?.top_drivers?.map((d, i) => (
-                <div key={i} className="driver-card" style={{ 
-                  background: 'var(--bg-card)', 
-                  border: '1px solid var(--border)',
-                  boxShadow: 'var(--shadow-sm)',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{ position: 'absolute', top: '-10px', right: '-10px', opacity: 0.05 }}>
-                    <Brain size={60} color={COLORS[i % COLORS.length]} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{d.feature}</span>
-                    <span className="badge" style={{ 
-                      background: `${COLORS[i % COLORS.length]}20`, 
-                      color: COLORS[i % COLORS.length] 
-                    }}>
-                      {( (d.importance || 0) * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="driver-bar-track" style={{ height: 8, background: 'var(--bg-input)' }}>
-                    <div className="driver-bar-fill" style={{ 
-                      width: `${d.importance * 100}%`, 
-                      background: `linear-gradient(90deg, ${COLORS[i % COLORS.length]}88, ${COLORS[i % COLORS.length]})`,
-                      boxShadow: `0 0 12px ${COLORS[i % COLORS.length]}30`
-                    }} />
-                  </div>
-                  <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                    {d.importance > 0.15 ? 'HIGH IMPACT' : 'MODERATE IMPACT'}
-                  </div>
-                </div>
-              ))}
             </div>
           </Section>
             </>

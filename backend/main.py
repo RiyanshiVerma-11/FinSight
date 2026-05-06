@@ -10,7 +10,7 @@ import json
 import asyncio
 from services.analytics import AnalyticsEngine
 from services.data_generator import generate_event
-from services.llm_engine import generate_llm_hypotheses
+from services.llm_engine import generate_llm_hypotheses, generate_llm_interventions
 from schemas import WhatIfRequest
 import numpy as np
 import threading
@@ -133,7 +133,9 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     rfm_results, silhouette = eng.calculate_rfm(df)
 
     # 2. Churn (with proper train/test + SHAP + model versioning)
-    churn_results, drivers, metrics, shap_data = eng.predict_churn(df, rfm_results)
+    # Use cache_key as model_id for persistent caching
+    model_id = cache_key if cache_key != "_default" else None
+    churn_results, drivers, metrics, shap_data = eng.predict_churn(df, rfm_results, model_id=model_id)
 
     # 3. Lifecycle
     lifecycle = eng.get_lifecycle_stages(df)
@@ -151,14 +153,25 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         logger.error(f"Cohort analysis error: {e}")
         cohort_data = []
 
-    # 7. Revenue-at-Risk
+    # 7. Revenue-at-Risk & Recovery Potential
     revenue_at_risk = eng.get_revenue_at_risk(churn_results)
+    potential_recovery = eng.get_potential_recovery(churn_results)
 
     # Merge
     final_df = churn_results.merge(lifecycle, on='user_id')
 
     # 8. LLM / Rule-based hypotheses
     hypotheses = eng.generate_hypotheses(drivers, final_df)
+
+    # 9. Churn Forecast (Data-Driven)
+    try:
+        forecast_data = eng.compute_churn_forecast(final_df, cohort_data, metrics)
+    except Exception as e:
+        logger.error(f"Forecast computation error: {e}")
+        forecast_data = []
+
+    # 10. Model Info (Dynamic)
+    best_model = metrics.get('primary_model', 'Random Forest')
 
     summary = {
         "total_users": int(final_df['user_id'].nunique()),
@@ -176,6 +189,14 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         "product_mix": product_mix,
         "cohort_data": cohort_data,
         "revenue_at_risk": revenue_at_risk,
+        "potential_recovery": potential_recovery,
+        "forecast": forecast_data,
+        "model_info": {
+            "name": best_model,
+            "n_estimators": getattr(eng._raw_model, 'n_estimators', 100),
+            "features_used": eng._feature_names,
+            "optimal_threshold": metrics.get('optimal_threshold', 0.5),
+        },
     }
 
     user_data = final_df.head(100).to_dict(orient='records')
@@ -468,13 +489,40 @@ async def get_llm_hypotheses():
     segment_stats = eng.get_segment_churn(rfm_df)
     drivers = [
         {"feature": name, "importance": float(imp)}
-        for name, imp in zip(eng._feature_names or ['Recency', 'Frequency', 'Monetary'], eng.model.feature_importances_)
+        for name, imp in zip(
+            eng._feature_names or ['Recency', 'Frequency', 'Monetary'], 
+            getattr(eng._raw_model, 'feature_importances_', getattr(eng.model, 'feature_importances_', []))
+        )
     ]
     drivers.sort(key=lambda x: x['importance'], reverse=True)
     shap_data = eng._compute_shap(rfm_df[['recency', 'frequency', 'monetary']].head(50), eng._feature_names or ['Recency', 'Frequency', 'Monetary'])
     
     hypotheses = await generate_llm_hypotheses(segment_stats, drivers, shap_data)
     return {"hypotheses": hypotheses, "source": "llm" if os.environ.get('GROQ_API_KEY') else "rule_based"}
+
+
+@app.get("/interventions")
+async def get_interventions():
+    """Generate dynamic, data-driven interventions per segment."""
+    if not _engine_cache:
+        raise HTTPException(status_code=400, detail="No data loaded yet.")
+
+    key = list(_engine_cache.keys())[-1]
+    eng = _engine_cache[key]['engine']
+    rfm_df = _engine_cache[key]['rfm_df']
+
+    segment_stats = eng.get_segment_churn(rfm_df)
+    drivers = [
+        {"feature": name, "importance": float(imp), "direction": "unknown"}
+        for name, imp in zip(
+            eng._feature_names or ['Recency', 'Frequency', 'Monetary'],
+            getattr(eng._raw_model, 'feature_importances_', getattr(eng.model, 'feature_importances_', []))
+        )
+    ]
+    drivers.sort(key=lambda x: x['importance'], reverse=True)
+
+    interventions = await generate_llm_interventions(segment_stats, drivers)
+    return {"interventions": interventions, "source": "llm" if os.environ.get('GROQ_API_KEY') else "rule_based"}
 
 
 # ──────────────────────────────────────

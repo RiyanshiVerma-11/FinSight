@@ -10,11 +10,10 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const PERSONA_MAP = {
   'At Risk': 'The Fading Star',
-  'Loyal': 'The Steady Pillar',
+  'Loyalists': 'The Steady Pillar',
   'Champions': 'The Loyal Giant',
   'Promising': 'The Rising Star',
-  'Hibernating': 'The Hibernator',
-  'Lost': 'The Lost Soul',
+  'Hibernating': 'The Lost Soul',
 };
 
 const CAMPAIGNS = [
@@ -86,12 +85,9 @@ export default function WhatIfPanel({ segments, segChurn }) {
   const churnImprovement = result ? (result.original_churn - result.simulated_churn) * 100 : 0;
   const isPositive = churnImprovement > 0;
   
-  // Real ROI logic: Dynamic LTV calculation based on segment data
+  // Real ROI logic: Use centralized backend LTV
   const segData = segChurn?.find(s => s.segment === segment);
-  const avgMonetary = segData?.avg_monetary || 1000;
-  
-  // Dynamic LTV: Current Spend + (Spend * Retention Probability * Duration Multiplier)
-  const avgLTV = Math.round(avgMonetary + (avgMonetary * (1 - (segData?.avg_churn || 0)) * 1.5));
+  const avgLTV = Math.round(segData?.est_ltv || 1000);
   
   const interventionCost = activeCampaign ? activeCampaign.costPerUser * result?.users_affected : 100 * result?.users_affected;
   const predictedLTVGained = result ? (avgLTV * (churnImprovement / 100) * result.users_affected) : 0;

@@ -31,7 +31,7 @@ export default function ShapModal({ userId, onClose }) {
           
           <div className="modal-header">
             <Brain size={24} style={{ color: '#8b5cf6' }} />
-            <h3>SHAP Explainability — {userId}</h3>
+            <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>SHAP Explainability — {userId}</h3>
           </div>
 
           {loading ? (
@@ -52,7 +52,7 @@ export default function ShapModal({ userId, onClose }) {
                 <div className="shap-stat">
                   <DollarSign size={16} style={{ color: '#f59e0b' }} />
                   <span className="shap-stat-label">Revenue at Risk</span>
-                  <span className="shap-stat-value">${data.revenue_at_risk?.toFixed(2)}</span>
+                  <span className="shap-stat-value">₹{data.revenue_at_risk?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                 </div>
                 <div className="shap-stat">
                   <span className="badge" style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}>

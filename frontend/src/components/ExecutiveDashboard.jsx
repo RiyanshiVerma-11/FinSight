@@ -7,17 +7,17 @@ import {
 import {
   Users, ShieldAlert, DollarSign, TrendingUp, TrendingDown,
   Target, Zap, CheckCircle, X, LayoutDashboard, Download, 
-  FileText, Briefcase, Activity, Award, AlertTriangle, Lightbulb
+  FileText, Briefcase, Activity, Award, AlertTriangle, Lightbulb, Brain
 } from 'lucide-react';
 
 const COLORS = ['#6366f1', '#ec4899', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
 
 const PERSONA_LABELS = {
   'At Risk': 'The Fading Star',
-  'Loyal': 'The Steady Pillar',
+  'Loyalists': 'The Steady Pillar',
   'Champions': 'The Loyal Giant',
-  'Potential Loyalist': 'The Rising Star',
-  'Lost': 'The Lost Soul',
+  'Promising': 'The Rising Star',
+  'Hibernating': 'The Lost Soul',
 };
 
 export default function ExecutiveDashboard({ data, onExportAll }) {
@@ -29,61 +29,21 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
   const revAtRisk = rar?.total || 0;
   const highRiskUsers = data?.users?.filter(u => u.churn_probability > 0.7).length || 0;
 
-  // Analytical Forecast: Grounded in Model Precision (AUC) and Segment Sensitivity
-  const baseRisk = s?.avg_churn_risk * 100 || 65;
-  const metrics = s?.metrics || {};
-  const auc = metrics.roc_auc || 0.82;
-  
-  // Simulation: If interventions are followed, recovery follows an S-Curve (Logistic)
-  // modulated by Model Confidence (AUC)
-  const forecastData = ['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'].map((month, i) => {
-    // Baseline risk (No Action) - slightly increasing over time due to churn inertia
-    const baseline = baseRisk + (i * 0.4);
-    
-    // Recovery Curve (Simulated Intervention Success)
-    // Success depends on how accurate our predictions are (AUC)
-    const t = i / 5; // time normalized 0 to 1
-    const recoveryPotential = 0.5 * auc; // Max recovery is 50% of churn if AUC is 1.0
-    const recoveryFactor = recoveryPotential / (1 + Math.exp(-10 * (t - 0.5))); // Sigmoid S-Curve
-    
-    const risk = Math.max(5, baseline * (1 - recoveryFactor));
-    const saved = baseline - risk;
-    
-    return { 
-      month, 
-      risk: Math.round(risk), 
-      saved: Math.round(saved),
-      baseline: Math.round(baseline) 
-    };
-  });
+  // ── Forecast: Use real backend data ──
+  const forecastData = s?.forecast || [];
 
-  // Top risk by product - Improved dynamic fallback
+  // Top risk by product — purely data-driven (Honest Logic)
   const rawProducts = data?.summary?.product_mix?.overall || [];
-  let displayProducts = rawProducts;
-  
-  if (rawProducts.length === 0) {
-    // Fallback if no product column found, but use actual user counts
-    displayProducts = [
-      { product: 'Core Services', count: Math.round(totalUsers * 0.45) },
-      { product: 'Digital Wallet', count: Math.round(totalUsers * 0.30) },
-      { product: 'Credit Line', count: Math.round(totalUsers * 0.15) },
-      { product: 'Investment', count: Math.round(totalUsers * 0.10) }
-    ];
-  }
-  
-  const productRisk = displayProducts.slice(0, 5).map((p, i) => ({
+  const productRisk = rawProducts.slice(0, 5).map((p, i) => ({
     name: p.product.length > 15 ? p.product.split(' ')[0] : p.product,
-    revenue: Math.round(revAtRisk * ( (p.count / totalUsers) || (0.4 - i * 0.08) )),
-    risk: Math.round( (s?.avg_churn_risk || 0.5) * 100 + (i * 5) )
+    revenue: Math.round(revAtRisk * ((p.count / totalUsers) || 0.1)),
+    risk: Math.round((p.count / totalUsers) * 100) // Percentage of users/orders at risk
   }));
 
   const topSegChurn = segChurn[0];
 
-  // Recovery potential: Based on AUC (model accuracy) and Churn Rate
-  const recoveryEfficiency = (metrics.roc_auc || 0.8) * 0.4; // Can realistically recover ~40% of accurately predicted churn
-  const potentialSaved = topSegChurn
-    ? Math.round((topSegChurn.avg_churn || 0) * recoveryEfficiency * revAtRisk)
-    : Math.round(revAtRisk * recoveryEfficiency);
+  // Recovery potential: Based on CENTRALIZED backend simulation
+  const potentialSaved = s?.potential_recovery || 0;
 
   const beforeAfter = [
     { label: 'Segmentation', before: '❌ None', after: '✅ Dynamic Persona-Based' },
@@ -151,7 +111,7 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
              <div style={{ background: 'var(--bg-input)', padding: '1.5rem', borderRadius: '1.25rem', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                    <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Retention Strategy Impact (6-Month Forecast)</div>
-                   <div style={{ fontSize: '0.7rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', borderRadius: '1rem' }}>PREDICTIVE AI</div>
+                   <div style={{ fontSize: '0.7rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', borderRadius: '1rem' }}>{s?.forecast?.length ? 'DATA-DRIVEN' : 'PROJECTED'}</div>
                 </div>
                 <div style={{ height: 200 }}>
                    <ResponsiveContainer width="100%" height="100%">
@@ -186,8 +146,9 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
                 </div>
              </div>
 
-             {/* Product Risk Breakdown */}
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+             {/* Product Risk Breakdown (only if real product data exists) */}
+             <div style={{ display: 'grid', gridTemplateColumns: productRisk.length > 0 ? '1fr 1fr' : '1fr', gap: '1.5rem' }}>
+                {productRisk.length > 0 && (
                 <div style={{ background: 'var(--bg-input)', padding: '1.25rem', borderRadius: '1.25rem', border: '1px solid var(--border)' }}>
                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>Revenue Risk by Product</div>
                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
@@ -208,6 +169,7 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
                       ))}
                    </div>
                 </div>
+                )}
 
                 <div style={{ background: 'var(--bg-input)', padding: '1.25rem', borderRadius: '1.25rem', border: '1px solid var(--border)' }}>
                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '1rem' }}>Persona Risk Heatmap</div>
@@ -260,7 +222,7 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                    {[
                       { label: 'Segmentation', after: '✅ Dynamic RFM' },
-                      { label: 'Model Confidence', after: `✅ ${((s?.metrics?.roc_auc || 0.85) * 100).toFixed(1)}% AUC` },
+                      { label: 'Model Confidence', after: s?.metrics?.roc_auc ? `✅ ${(s.metrics.roc_auc * 100).toFixed(1)}% AUC` : '⏳ Calculating...' },
                       { label: 'Churn Visibility', after: `✅ ${churnPct}% tracked` },
                       { label: 'Revenue Loss', after: `💰 ₹${revAtRisk.toLocaleString()} mapped` },
                    ].map((row, i) => (
@@ -271,9 +233,9 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
                    ))}
                 </div>
                 <div style={{ marginTop: '1.5rem', padding: '0.75rem', background: 'rgba(16,185,129,0.1)', borderRadius: '0.75rem', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center' }}>
-                   <div style={{ fontSize: '0.65rem', color: '#10b981', fontWeight: 800 }}>ESTIMATED RECOVERY ROI</div>
+                   <div style={{ fontSize: '0.65rem', color: '#10b981', fontWeight: 800 }}>POTENTIAL RECOVERY</div>
                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981' }}>
-                     +{( (s?.metrics?.f1 || 0.75) * 30 ).toFixed(1)}% YoY
+                     ₹{potentialSaved.toLocaleString()}
                    </div>
                 </div>
              </div>
@@ -303,20 +265,11 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
                        {segChurn.slice(0, 4).map((seg, i) => {
                           const persona = PERSONA_LABELS[seg.segment] || seg.segment;
                           const isHighRisk = seg.avg_churn > 0.4;
-                          const actions = {
-                             'At Risk': 'Cashback / High-Touch Outreach',
-                             'Loyal': 'Loyalty Rewards / Plan Upgrade',
-                             'Champions': 'Exclusive VIP Access / Referral Bonus',
-                             'Potential Loyalist': 'Personalized Discounts / Re-engagement',
-                             'Lost': 'Win-back Campaign / Exit Survey'
-                          };
-                          const drivers = {
-                             'At Risk': 'Frequency Decay',
-                             'Loyal': 'Frequency Plateau',
-                             'Champions': 'Nurturing Required',
-                             'Potential Loyalist': 'Low Monetary Velocity',
-                             'Lost': 'High Recency Gap'
-                          };
+                          const topDriver = seg.top_drivers?.[0];
+                          const driverLabel = topDriver?.feature || 'Behavioral Drift';
+                          const riskLevel = isHighRisk ? 'high' : seg.avg_churn > 0.2 ? 'medium' : 'low';
+                          const actionLookup = { high: 'Emergency cashback + priority outreach', medium: 'Re-engagement sequence + incentive', low: 'Loyalty tier upgrade + cross-sell' };
+                          const actionLabel = actionLookup[riskLevel];
                           return (
                              <tr key={i} style={{ borderBottom: '1px solid var(--border-light)' }}>
                                 <td style={{ padding: '1rem 0.75rem' }}>
@@ -329,12 +282,12 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
                                    </span>
                                 </td>
                                 <td style={{ padding: '1rem 0.75rem', fontSize: '0.8rem', color: '#475569' }}>
-                                   {drivers[seg.segment] || 'Behavioral Drift'}
+                                   {driverLabel}
                                 </td>
                                 <td style={{ padding: '1rem 0.75rem' }}>
                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '0.3rem 0.6rem', borderRadius: '0.5rem', width: 'fit-content' }}>
                                       <Zap size={12} />
-                                      <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{actions[seg.segment] || 'Targeted Intervention'}</span>
+                                      <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{actionLabel}</span>
                                    </div>
                                 </td>
                                 <td style={{ padding: '1rem 0.75rem' }}>
@@ -351,8 +304,65 @@ export default function ExecutiveDashboard({ data, onExportAll }) {
                     </tbody>
                  </table>
               </div>
-           </div>
-        </div>
+            </div>
+         </div>
+
+         {/* ── Segment Risk Architecture (The "Why" per Segment) ── */}
+         <div style={{ padding: '1.5rem 2rem 2rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem' }}>
+               <Brain size={22} style={{ color: '#8b5cf6' }} />
+               <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>Segment Risk Architecture</h2>
+               <span className="version-badge" style={{ background: '#8b5cf6' }}>SHAP EXPLAINABILITY</span>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+               {segChurn.slice(0, 4).map((seg, i) => (
+                  <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+                     style={{ 
+                        background: 'var(--bg-input)', 
+                        padding: '1.25rem', 
+                        borderRadius: '1.25rem', 
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.75rem'
+                     }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.85rem', color: COLORS[i % COLORS.length] }}>{PERSONA_LABELS[seg.segment] || seg.segment}</span>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)' }}>{seg.count} Users</span>
+                     </div>
+                     
+                     <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 600, lineHeight: 1.4 }}>
+                        {seg.explanation}
+                     </div>
+
+                     <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {seg.top_drivers?.map((d, di) => (
+                           <div key={di} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontWeight: 700 }}>
+                                 <span style={{ color: 'var(--text-secondary)' }}>{d.feature}</span>
+                                 <span style={{ color: d.direction === 'increases_churn' ? '#f43f5e' : '#10b981' }}>
+                                    {d.direction === 'increases_churn' ? '↑ Risk' : '↓ Risk'}
+                                 </span>
+                              </div>
+                              <div style={{ height: 4, background: 'rgba(0,0,0,0.05)', borderRadius: 2 }}>
+                                 <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${Math.min(100, d.importance * 400)}%` }}
+                                    style={{ 
+                                       height: '100%', 
+                                       background: d.direction === 'increases_churn' ? '#f43f5e' : '#10b981',
+                                       borderRadius: 2
+                                    }} 
+                                 />
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  </motion.div>
+               ))}
+            </div>
+         </div>
 
         {/* Footer */}
         <div style={{ padding: '1rem 2rem', background: 'rgba(0,0,0,0.02)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
