@@ -6,13 +6,19 @@ import { Target, Zap, RefreshCw } from 'lucide-react';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const PERSONA_MAP = {
-  'At Risk': 'The Fading Star',
-  'Loyal': 'The Steady Pillar',
   'Champions': 'The Loyal Giant',
+  'Loyalists': 'The Steady Pillar',
   'Promising': 'The Rising Star',
-  'Hibernating': 'The Hibernator',
-  'Lost': 'The Lost Soul',
-  'Potential Loyalist': 'The Rising Star',
+  'At Risk': 'The Fading Star',
+  'Hibernating': 'The Lost Soul',
+};
+
+const SEGMENT_COLORS = {
+  'Champions': '#10b981',
+  'Loyalists': '#6366f1',
+  'Promising': '#06b6d4',
+  'At Risk': '#f43f5e',
+  'Hibernating': '#94a3b8',
 };
 
 export default function InterventionEngine({ segments, segChurn }) {
@@ -83,8 +89,11 @@ export default function InterventionEngine({ segments, segChurn }) {
               // Use dynamic intervention from backend if available
               const dynIntervention = interventions?.find(iv => iv.segment === seg);
               const problem = dynIntervention?.problem || (segData?.avg_churn > 0.5 ? `Critical churn at ${churnPct}%` : `Elevated risk at ${churnPct}%`);
-              const action = dynIntervention?.action || (isProfitable ? 'Targeted retention campaign' : 'Monitor & assess');
-              const interventionColor = segData?.avg_churn > 0.5 ? '#f43f5e' : segData?.avg_churn > 0.3 ? '#f59e0b' : '#6366f1';
+              let action = dynIntervention?.action || (isProfitable ? 'Targeted retention campaign' : 'Monitor & assess');
+              if (!isProfitable) {
+                action = 'Minimize Loss / Debt Recovery';
+              }
+              const interventionColor = SEGMENT_COLORS[seg] || '#6366f1';
 
               return (
                 <motion.tr

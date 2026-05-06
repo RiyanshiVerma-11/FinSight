@@ -175,7 +175,8 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
 
     summary = {
         "total_users": int(final_df['user_id'].nunique()),
-        "avg_churn_risk": float(final_df['churn_probability'].mean()),
+        "avg_churn_risk": float((final_df['churn_probability'] * final_df['monetary']).sum() / max(final_df['monetary'].sum(), 1)),
+        "data_health": eng._calculate_data_health(df),
         "segments": final_df['segment'].value_counts().to_dict(),
         "lifecycle_stages": final_df['lifecycle'].value_counts().to_dict(),
         "top_drivers": drivers,
@@ -199,7 +200,12 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         },
     }
 
-    user_data = final_df.head(100).to_dict(orient='records')
+    # Prioritize 'New' lifecycle users for the executive dashboard list
+    new_users = final_df[final_df['lifecycle'] == 'New']
+    other_users = final_df[final_df['lifecycle'] != 'New'].sort_values('churn_probability', ascending=False)
+    
+    combined_sample = pd.concat([new_users, other_users]).head(1000)
+    user_data = combined_sample.to_dict(orient='records')
 
     # Cache engine for per-user SHAP & what-if
     _engine_cache[cache_key] = {'engine': eng, 'rfm_df': churn_results}
@@ -444,13 +450,17 @@ async def analyze_data(file: UploadFile = File(...)):
 async def get_user_shap(user_id: str):
     """Get local SHAP explanation for a specific user."""
     # Try all cached engines
+    if not _engine_cache:
+        logger.warning("⚠️ Engine cache is empty (likely due to restart).")
+        raise HTTPException(status_code=503, detail="Server restarted. Please re-select or re-upload the dataset to activate SHAP explainer.")
+        
     for key, cache in _engine_cache.items():
         eng = cache['engine']
         rfm_df = cache['rfm_df']
         result = eng.compute_user_shap(user_id, rfm_df)
         if result:
             return result
-    raise HTTPException(status_code=404, detail=f"User '{user_id}' not found in any cached dataset")
+    raise HTTPException(status_code=404, detail=f"User '{user_id}' not found. Please ensure the dataset is fully loaded.")
 
 
 # ──────────────────────────────────────

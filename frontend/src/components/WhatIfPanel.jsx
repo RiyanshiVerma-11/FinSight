@@ -38,7 +38,7 @@ function AnimatedNumber({ value, prefix = '', suffix = '', decimals = 1 }) {
   );
 }
 
-export default function WhatIfPanel({ segments, segChurn }) {
+export default function WhatIfPanel({ segments, segChurn, onSimulationResult }) {
   const [segment, setSegment] = useState('');
   const [feature, setFeature] = useState('frequency');
   const [delta, setDelta] = useState(20);
@@ -58,6 +58,7 @@ export default function WhatIfPanel({ segments, segChurn }) {
     try {
       const r = await axios.post(`${API_URL}/whatif`, { segment, feature: f, delta_pct: d });
       setResult(r.data);
+      if (onSimulationResult) onSimulationResult(r.data);
       setAbTest(null); // reset A/B test when running a new simulation
     } catch (e) {
       alert(e.response?.data?.detail || 'Simulation failed');
@@ -85,13 +86,14 @@ export default function WhatIfPanel({ segments, segChurn }) {
   const churnImprovement = result ? (result.original_churn - result.simulated_churn) * 100 : 0;
   const isPositive = churnImprovement > 0;
   
-  // Real ROI logic: Use centralized backend LTV
+  // Real ROI logic: Use centralized backend LTV and Cost
   const segData = segChurn?.find(s => s.segment === segment);
   const avgLTV = Math.round(segData?.est_ltv || 1000);
+  const backendCostPerUser = segData?.intervention_cost || 15; // Balanced fallback
   
-  const interventionCost = activeCampaign ? activeCampaign.costPerUser * result?.users_affected : 100 * result?.users_affected;
+  const interventionCost = activeCampaign ? activeCampaign.costPerUser * result?.users_affected : backendCostPerUser * result?.users_affected;
   const predictedLTVGained = result ? (avgLTV * (churnImprovement / 100) * result.users_affected) : 0;
-  const isProfitable = predictedLTVGained > interventionCost;
+  const isProfitable = predictedLTVGained > (interventionCost * 0.85); // Professional margin
 
   return (
     <div>

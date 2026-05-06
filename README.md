@@ -1,10 +1,10 @@
-# FinSight v3.0 — Enterprise Churn Intelligence & Retention ROI
+# FinSight v3.2 — Enterprise Churn Intelligence & Retention ROI
 
 <div align="center">
 
 > **Predict · Explain · Intervene · Protect Revenue**
 >
-> An enterprise-grade analytics engine that transforms raw fintech transaction data into actionable churn intelligence — with per-user SHAP explainability, counterfactual simulation, AI-generated strategy playbooks, and a real-time intervention engine.
+> An enterprise-grade analytics engine that transforms raw fintech transaction data into actionable churn intelligence — featuring real-time lifecycle monitoring, product-risk correlation, and data-driven strategic playbooks.
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -14,7 +14,6 @@
 [![SHAP](https://img.shields.io/badge/SHAP-0.44-blueviolet)](https://shap.readthedocs.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](https://docs.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-22c55e)](LICENSE)
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Render-informational?style=for-the-badge&logo=render&logoColor=white)](https://finsight-frontend-r0a8.onrender.com/)
 
 </div>
 
@@ -22,80 +21,56 @@
 
 ## Strategic Value
 
-| Dimension | Standard Analytics | **FinSight v3.0 (Enterprise)** |
+| Dimension | Standard Analytics | **FinSight v3.2 (Enterprise)** |
 |-----------|---------------------------|--------------------------|
-| **Prediction** | Binary churn (Yes/No) | **Probability + Revenue at Risk + LTV Forecast** |
-| **Segments** | Simple K-Means | **Professional Personas (e.g., "The Fading Star")** |
-| **Explainability** | Static charts | **Per-user Local SHAP + Global Interaction Plots** |
-| **Action** | Static recommendations | **Dynamic ROI Calculator (Profitable / Not)** |
-| **Simulation** | None | **Campaign Simulator + A/B Test Engine** |
-| **Reporting** | CSV Export | **"Board Meeting" PDF Export + Exec View** |
-| **UX** | Dashboard | **Tabbed Interface + Interactive Onboarding Tour** |
-| **Validation** | Manual | **Pydantic v2 Strict Schema + Automated Tests** |
+| **Lifecycle** | Static user counts | **Dynamic Stages (New, Active, Early Churn)** |
+| **Product Risk** | Sales volume only | **Product-to-Churn Correlation Mapping** |
+| **Strategy** | General insights | **Testable Hypotheses + Expected ROI Lift** |
+| **Prediction** | Binary churn (Yes/No) | **Probability + Revenue-Weighted Risk** |
+| **Explainability**| Static charts | **Per-user Local SHAP + Searchable Action List**|
+| **Reporting** | CSV Export | **"Board Meeting" PDF Export (Synced Metrics)** |
 
 ---
 
 ## Feature Catalogue
 
-### 1. Tabbed Intelligence Interface *(new)*
-The dashboard is now organized into functional workstreams to reduce cognitive load:
-- **Executive View**: High-level KPIs and Board-ready insights.
-- **Overview**: Behavioral segmentation and lifecycle distribution.
-- **Explainability**: Deep-dive into SHAP drivers and Model Health.
-- **Simulation**: What-If counterfactuals and the Intervention Engine.
-- **Users & Cohorts**: Individual risk profiles and temporal retention heatmaps.
+### 1. Lifecycle Onboarding Intelligence *(new)*
+The system identifies critical transition points in the user journey:
+- **Onboarding List**: A prioritized view of users in the 'New' phase who haven't hit the 2nd purchase threshold.
+- **Paginated Search**: Full-screen modal with search functionality to investigate high-risk individuals.
+- **Retention Nudges**: Direct action buttons to trigger targeted re-engagement for onboarding users.
 
-### 2. Retention ROI Calculator *(new)*
-Moves beyond "who will churn" to "who is profitable to save":
-- **Dynamic Costing**: Calculates intervention cost vs. Predicted LTV.
-- **Profitability Labeling**: Automatically flags users as `Profitable` or `Non-Profitable` for retention spend.
-- **Revenue Protection**: Prioritizes users where `(LTV × Churn Reduction) > CAC`.
+### 2. Product-Risk Correlation Analysis *(new)*
+Moves beyond simple sales volume to identify which products actually drive churn:
+- **Risk Drivers**: Identifies products correlated with high churn (e.g., "Problematic" service tiers).
+- **Retention Anchors**: Highlights products that keep users loyal.
+- **Priority Mix**: Dynamic table sorting products by their absolute impact on churn probability.
 
-### 3. "Board Meeting" Export Engine *(updated)*
+### 3. Testable Hypothesis Playbook *(new)*
+Replaces generic AI advice with scientifically grounded, testable strategies:
+- **Expected Lift**: Every hypothesis includes a projected recovery percentage (e.g., +15% Lift).
+- **Experimental Guardrails**: Defines the specific "Test" to run (e.g., A/B testing Fee Waivers vs. VIP Support).
+- **Impact Badges**: Visual categorization of strategies based on potential revenue recovery.
+
+### 4. Enterprise-Grade Dashboard Sync
+Ensures total data consistency for high-stakes stakeholder presentations:
+- **Synchronized Metrics**: Every gauge and footer reflects the same calibrated **85.1% ROC-AUC** score.
+- **Revenue-Weighted Risk**: Aggregated risk is weighted by user monetary value, preventing low-value "ghost" users from skewing boardroom decisions.
+- **Data Health Check**: Real-time monitoring of dataset completeness and feature drift.
+
+### 5. "Board Meeting" Export Engine
 Generate executive-ready reports with one click:
-- **PDF Export**: Capture the entire app state (Header + All Content) into a professional multi-page document.
-- **Analytical S-Curve Forecasting**: Visualizes future churn risk vs. recovered revenue using a logistic recovery simulation grounded in the model's actual AUC precision, complete with a "No Action" baseline.
-- **Product Risk Breakdown**: Identifies specific "Leaky Bucket" products (e.g., Credit Cards, Savings) for targeted optimization.
-- **Strategic Recommendations**: Prescriptive C-Suite action items based on real-time ROI calculations.
+- **PDF Export**: Capture the entire app state (Executive View + Metrics) into a professional document.
+- **Persona Classification**: Communicates risk using professional fintech personas (e.g., "The Fading Star", "The Loyal Giant").
 
-### 4. Professional Persona Classification
-Standardized fintech segments for intuitive business communication:
-- **The Fading Star**: High-value users showing rapid frequency decline.
-- **The Loyal Giant**: High-LTV, low-risk users requiring "Platinum" treatment.
-- **The Hibernator**: Long-tenure users who have gone silent (High IPI Deviation).
-- **The Price Shopper**: Low-monetary users sensitive to discounts.
-
-### 5. Interactive Onboarding Tour *(new)*
-Powered by `react-joyride`, a guided walkthrough introduces new users to:
-- Data integration flows.
-- AI explainability (SHAP) interpretation.
-- Simulation engine mechanics.
-- Cohort retention reading.
-
-### 6. Per-User Local SHAP Explainability & Model Evidence
-- Click any user row to render their individual SHAP waterfall.
-- *"85% churn risk BECAUSE Recency pushes risk +0.187, Frequency reduces it −0.042"*
-- **Global Feature Interaction**: Interactive dependence plots visualizing how intersecting variables (e.g., $Amount × Tenure$) drive churn.
-- **What-If Model Evidence**: Simulation results now return "Model Evidence" bars, mapping the raw data changes back to the Random Forest's cumulative feature importance weights to prove simulation validity.
-
-### 7. Priority Score Ranking
-User table sorted by a multi-dimensional metric:
-`Priority Score = Churn Prob × (LTV / Max LTV) × Engagement Sensitivity`
-- Surfacing the **"Top 50 Users to Save TODAY"**.
-- Real-time badges: **URGENT / HIGH / MONITOR**.
-
-### 8. Intervention Engine & C-Suite Playbook
-Prescriptive action playbook — an enterprise-grade, segment-specific, judge-ready table:
-- Maps high-level strategic personas directly to targeted C-Suite Interventions (e.g., VIP Concierge, Fee Waivers).
-- Tracks the specific problem driver (e.g., "High IPI Deviation") and calculates live ROI Status (e.g., "URGENT ROI" vs "PROF. GROWTH").
-
-### 9. Automated Model Health & Data Drift Monitor
-Real-time tracking of Model Health Metrics including active ROC-AUC and Cross-Validation F1-Scores. 
-- A live **Data Drift Monitor** calculates statistical P-values to detect behavioral shifts, ensuring the Random Forest v3.0 model remains calibrated for high-stakes enterprise decisions.
+### 6. Per-User Local SHAP & Model Evidence
+- **Interactive Modals**: Click any user row to see exactly why the model flagged them.
+- **Global Feature Interaction**: Interactive plots showing how metrics like $Amount × Tenure$ drive churn probability.
+- **Model Transparency**: Real-time display of cross-validation F1-scores and model versioning.
 
 ---
 
-## How It Works (Architecture)
+## Architecture Flow
 
 ```mermaid
 graph TB
