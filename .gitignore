@@ -44,5 +44,6 @@ Thumbs.db
 
 # ML Models (Keep repo light)
 *.pkl
+*.pkl.json
 !backend/datasets/.gitkeep
 !backend/models/.gitkeep

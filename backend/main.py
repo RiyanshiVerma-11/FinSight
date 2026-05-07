@@ -209,7 +209,7 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     user_data = combined_sample.to_dict(orient='records')
 
     # Cache engine for per-user SHAP & what-if
-    _engine_cache[cache_key] = {'engine': eng, 'rfm_df': churn_results}
+    _engine_cache[cache_key] = {'engine': eng, 'rfm_df': churn_results, 'shap_data': shap_data}
 
     return {"summary": summary, "users": user_data}
 
@@ -491,7 +491,9 @@ async def whatif_simulation(req: WhatIfRequest):
 async def get_llm_hypotheses():
     """Generate LLM-powered business hypotheses from cached analysis."""
     if not _engine_cache:
-        raise HTTPException(status_code=400, detail="No data loaded yet.")
+        await get_default_data()
+    if not _engine_cache:
+        raise HTTPException(status_code=503, detail="No data loaded yet. Please load a dataset first.")
     
     key = list(_engine_cache.keys())[-1]
     eng = _engine_cache[key]['engine']
@@ -506,7 +508,7 @@ async def get_llm_hypotheses():
         )
     ]
     drivers.sort(key=lambda x: x['importance'], reverse=True)
-    shap_data = eng._compute_shap(rfm_df[['recency', 'frequency', 'monetary']].head(50), eng._feature_names or ['Recency', 'Frequency', 'Monetary'])
+    shap_data = _engine_cache[key].get('shap_data') or []
     
     hypotheses = await generate_llm_hypotheses(segment_stats, drivers, shap_data)
     return {"hypotheses": hypotheses, "source": "llm" if os.environ.get('GROQ_API_KEY') else "rule_based"}

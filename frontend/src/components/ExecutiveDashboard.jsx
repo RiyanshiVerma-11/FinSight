@@ -17,6 +17,7 @@ const SEGMENT_COLORS = {
   'Loyalists': '#6366f1',
   'Promising': '#06b6d4',
   'At Risk': '#f43f5e',
+  'Needs Attention': '#f59e0b',
   'Hibernating': '#94a3b8',
 };
 
@@ -30,6 +31,10 @@ const formatCurrency = (val) => {
     compactDisplay: 'short'
   }).format(val);
 };
+
+const formatMetricPct = (value) => (
+  value === undefined || value === null ? 'N/A' : `${(value * 100).toFixed(1)}%`
+);
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -67,6 +72,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
   const rar = s?.revenue_at_risk;
   const segChurn = s?.segment_churn || [];
   const totalUsers = s?.total_users || 0;
+  const riskThreshold = s?.model_info?.optimal_threshold ?? s?.metrics?.optimal_threshold ?? 0.5;
   
   let currentChurnRisk = s?.avg_churn_risk || 0;
   if (globalSimResult && totalUsers > 0) {
@@ -335,10 +341,22 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 </div>
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                    {Object.entries(s?.lifecycle_stages || {}).map(([stage, count], i) => (
-                      <div key={stage} style={{ flex: 1, minWidth: '100px', background: 'var(--bg-card)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(0,0,0,0.05)' }}>
+                      <motion.div 
+                         whileHover={{ scale: 1.02 }}
+                         key={stage} 
+                         style={{ 
+                           flex: 1, 
+                           minWidth: '150px', 
+                           background: 'var(--bg-card)', 
+                           padding: '1.25rem', 
+                           borderRadius: '16px', 
+                           border: '1px solid rgba(0,0,0,0.05)',
+                           boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                         }}
+                      >
                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.25rem' }}>{stage}</div>
                          <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-primary)' }}>{count.toLocaleString()}</div>
-                      </div>
+                      </motion.div>
                    ))}
                 </div>
                 <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600, padding: '0.75rem', background: 'rgba(6,182,212,0.05)', borderRadius: '8px', borderLeft: '3px solid #06b6d4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -421,9 +439,11 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                             <span style={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#6366f1' }}>{h.driver || 'Behavioral'}</span>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                               <span style={{ fontSize: '0.65rem', fontWeight: 800, background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '0.2rem 0.5rem', borderRadius: '5px' }}>
-                                  Expected Lift: +{h.impact === 'Critical' ? '15' : h.impact === 'High' ? '12' : '8'}% Recovery
-                               </span>
+                               {(h.expected_lift_pct || h.expected_churn_reduction) && (
+                                 <span style={{ fontSize: '0.65rem', fontWeight: 800, background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '0.2rem 0.5rem', borderRadius: '5px' }}>
+                                    Expected Lift: +{h.expected_lift_pct || h.expected_churn_reduction}% Recovery
+                                 </span>
+                               )}
                                <span style={{ fontSize: '0.65rem', fontWeight: 800, background: h.impact === 'Critical' ? 'rgba(244,63,94,0.1)' : 'rgba(99,102,241,0.1)', color: h.impact === 'Critical' ? '#f43f5e' : '#6366f1', padding: '0.2rem 0.5rem', borderRadius: '5px' }}>
                                   {h.impact} Impact
                                </span>
@@ -463,8 +483,8 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                     {[
-                       { label: 'Model ROC-AUC Score', value: `${(s?.metrics?.roc_auc * 100 || 85.1).toFixed(1)}%`, color: '#10b981' },
-                       { label: 'Visibility Accuracy', value: `High (${(s?.metrics?.accuracy * 100 || 98.2).toFixed(1)}%)`, color: '#6366f1' },
+                       { label: 'Model ROC-AUC Score', value: formatMetricPct(s?.metrics?.roc_auc), color: '#10b981' },
+                       { label: 'Visibility Accuracy', value: s?.metrics?.accuracy === undefined ? 'N/A' : `High (${formatMetricPct(s.metrics.accuracy)})`, color: '#6366f1' },
                        { label: 'Inferred Loss', value: formatCurrency(revAtRisk), color: '#f43f5e' },
                     ].map((row, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -509,7 +529,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
               Probabilistic intelligence engine active. Data updated in real-time. (Last updated: {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
            </div>
             <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '0.3rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
-               FinSight AI (ROC-AUC {(s?.metrics?.roc_auc * 100 || 85.1).toFixed(1)}%) outperforms standard baseline by +{((s?.metrics?.roc_auc || 0.85) / 0.68 * 100 - 100).toFixed(1)}%
+               FinSight AI (ROC-AUC {formatMetricPct(s?.metrics?.roc_auc)}) {s?.metrics?.roc_auc === undefined ? 'awaiting model evidence' : `outperforms standard baseline by +${((s.metrics.roc_auc / 0.68 * 100) - 100).toFixed(1)}%`}
             </div>
            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>
               FinSight AI · v3.2.0-STABLE
@@ -596,7 +616,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                           <td style={{ padding: '1rem 0.5rem', fontWeight: 700, color: 'var(--text-primary)' }}>{user.user_id}</td>
                           <td style={{ padding: '1rem 0.5rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{user.rfm_score || 'N/A'}</td>
                           <td style={{ padding: '1rem 0.5rem', fontWeight: 700, color: '#10b981' }}>{user.predicted_ltv ? `₹${Math.round(user.predicted_ltv).toLocaleString()}` : '₹0'}</td>
-                          <td style={{ padding: '1rem 0.5rem', fontWeight: 700, color: user.churn_probability > 0.5 ? '#f43f5e' : '#f59e0b' }}>{user.churn_probability ? `${(user.churn_probability * 100).toFixed(1)}%` : 'N/A'}</td>
+                          <td style={{ padding: '1rem 0.5rem', fontWeight: 700, color: user.churn_probability >= riskThreshold ? '#f43f5e' : '#f59e0b' }}>{user.churn_probability ? `${(user.churn_probability * 100).toFixed(1)}%` : 'N/A'}</td>
                           <td style={{ padding: '1rem 0.5rem', textAlign: 'center' }}>
                             <button onClick={() => alert(`Triggering targeted '2nd Purchase Discount' email for User ${user.user_id}...`)} style={{ background: 'rgba(99,102,241,0.1)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)', padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s' }} onMouseOver={e => e.currentTarget.style.background = 'rgba(99,102,241,0.2)'} onMouseOut={e => e.currentTarget.style.background = 'rgba(99,102,241,0.1)'}>Send Nudge</button>
                           </td>

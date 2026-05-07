@@ -33,6 +33,7 @@ const SEGMENT_COLORS = {
   'Promising': '#06b6d4',    // Cyan
   'At Risk': '#f43f5e',      // Rose (Red for Danger)
   'Hibernating': '#94a3b8',  // Slate (Dull for Lapsed)
+  'Needs Attention': '#f59e0b', // Amber/Yellow
   'New': '#8b5cf6',          // Violet
 };
 const CHART_COLORS = ['#6366f1', '#a78bfa', '#c084fc', '#e879f9', '#f472b6', '#fb7185'];
@@ -131,9 +132,22 @@ const segmentToPersona = (name) => {
     'Loyalists': 'The Steady Pillar',
     'Champions': 'The Loyal Giant',
     'Promising': 'The Rising Star',
+    'Needs Attention': 'The Drifting Spark',
     'Hibernating': 'The Lost Soul',
   };
   return PERSONA_MAP[name] || name;
+};
+
+const formatMetricPct = (value) => (
+  value === undefined || value === null ? 'N/A' : `${(value * 100).toFixed(1)}%`
+);
+
+const getRiskThresholds = (summary) => {
+  const threshold = summary?.model_info?.optimal_threshold ?? summary?.metrics?.optimal_threshold ?? 0.5;
+  return {
+    high: threshold,
+    critical: Math.min(0.95, Math.max(threshold + 0.2, threshold * 1.4)),
+  };
 };
 
 function App() {
@@ -311,6 +325,7 @@ function App() {
   const productMix = s?.product_mix;
   const rar = s?.revenue_at_risk;
   const totalUsers = s?.total_users || 0;
+  const { high: riskThreshold, critical: criticalThreshold } = getRiskThresholds(s);
   
   let currentChurnRisk = s?.avg_churn_risk || 0;
   if (globalSimResult && totalUsers > 0) {
@@ -489,8 +504,8 @@ function App() {
                 trend="Revenue-Weighted Risk" trendClass="stat-trend--neutral" trendIcon={DollarSign} delay={0.05} />
 
               <StatCard icon={Target} iconClass="stat-icon--cyan" cardClass="stat-card--cyan"
-                label="Model Accuracy" value={s?.metrics?.accuracy !== undefined ? `${(s.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
-                trend={`AUC: ${(s?.metrics?.roc_auc * 100 || 0).toFixed(1)}%`}
+                label="Model Accuracy" value={formatMetricPct(s?.metrics?.accuracy)}
+                trend={`AUC: ${formatMetricPct(s?.metrics?.roc_auc)}`}
                 trendClass="stat-trend--neutral" trendIcon={ShieldCheck} delay={0.1} />
 
               <StatCard icon={DollarSign} iconClass="stat-icon--amber" cardClass="stat-card--amber"
@@ -656,7 +671,7 @@ function App() {
                   }))}>
                     {(data?.users || []).slice(0, 100).map((u, index) => {
                       const churn = u.churn_probability || 0;
-                      return <Cell key={`cell-${index}`} fill={churn > 0.7 ? '#f43f5e' : churn > 0.3 ? '#f59e0b' : '#10b981'} />;
+                      return <Cell key={`cell-${index}`} fill={churn >= criticalThreshold ? '#f43f5e' : churn >= riskThreshold ? '#f59e0b' : '#10b981'} />;
                     })}
                   </Scatter>
                 </ScatterChart>
@@ -753,7 +768,7 @@ function App() {
                 <div style={{ width: 70, height: 70 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={[{ value: s?.metrics?.roc_auc || 0.851 }, { value: 1 - (s?.metrics?.roc_auc || 0.851) }]} 
+                      <Pie data={[{ value: s?.metrics?.roc_auc || 0 }, { value: 1 - (s?.metrics?.roc_auc || 0) }]} 
                         cx="50%" cy="50%" innerRadius={24} outerRadius={34} startAngle={90} endAngle={-270}
                         dataKey="value" stroke="none">
                         <Cell fill="#10b981" />
@@ -764,7 +779,7 @@ function App() {
                 </div>
                 <div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1 }}>
-                    {(s?.metrics?.roc_auc * 100 || 85.1).toFixed(1)}%
+                    {formatMetricPct(s?.metrics?.roc_auc)}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.05em', marginTop: '0.25rem' }}>ROC-AUC CONFIDENCE</div>
                 </div>
@@ -981,7 +996,7 @@ function App() {
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>High Risk Users</div>
                     <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--accent-rose)' }}>
-                      {data?.users?.filter(u => u.churn_probability > 0.5).length}
+                      {data?.users?.filter(u => u.churn_probability >= riskThreshold).length}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -1029,7 +1044,7 @@ function App() {
                         .slice(0, 50);
 
                       return sorted.map((u, i) => {
-                        const riskColor = u.churn_probability > 0.7 ? 'var(--accent-rose)' : u.churn_probability > 0.4 ? 'var(--accent-amber)' : 'var(--accent-emerald)';
+                        const riskColor = u.churn_probability >= criticalThreshold ? 'var(--accent-rose)' : u.churn_probability >= riskThreshold ? 'var(--accent-amber)' : 'var(--accent-emerald)';
                         const ltvVal = u.predicted_ltv || u.monetary || 0;
                         const ltvPct = Math.min(100, (ltvVal / maxLtv) * 100);
                         const priorityPct = Math.min(100, (u.priority / maxPriority) * 100);
@@ -1037,7 +1052,7 @@ function App() {
                         return (
                           <tr key={i} onClick={() => setShapUser(u.user_id)} style={{
                             cursor: 'pointer',
-                            borderLeft: `3px solid ${u.churn_probability > 0.7 ? 'var(--accent-rose)' : 'transparent'}`
+                            borderLeft: `3px solid ${u.churn_probability >= criticalThreshold ? 'var(--accent-rose)' : 'transparent'}`
                           }}>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -1080,7 +1095,7 @@ function App() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: riskColor }}>
-                                    {u.churn_probability > 0.7 ? 'CRITICAL' : u.churn_probability > 0.4 ? 'WARNING' : 'STABLE'}
+                                    {u.churn_probability >= criticalThreshold ? 'CRITICAL' : u.churn_probability >= riskThreshold ? 'WARNING' : 'STABLE'}
                                   </span>
                                   <span style={{ fontWeight: 800, color: riskColor, fontSize: '0.85rem' }}>{(u.churn_probability * 100).toFixed(0)}%</span>
                                 </div>

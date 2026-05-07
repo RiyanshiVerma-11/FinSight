@@ -43,9 +43,9 @@ export default function ShapModal({ userId, onClose }) {
               {/* Summary stats */}
               <div className="shap-stats-row">
                 <div className="shap-stat">
-                  <AlertTriangle size={16} style={{ color: data.churn_probability > 0.5 ? '#f43f5e' : '#10b981' }} />
+                  <AlertTriangle size={16} style={{ color: data.churn_probability >= (data.risk_threshold ?? 0.5) ? '#f43f5e' : '#10b981' }} />
                   <span className="shap-stat-label">Churn Risk</span>
-                  <span className="shap-stat-value" style={{ color: data.churn_probability > 0.5 ? '#f43f5e' : '#10b981' }}>
+                  <span className="shap-stat-value" style={{ color: data.churn_probability >= (data.risk_threshold ?? 0.5) ? '#f43f5e' : '#10b981' }}>
                     {(data.churn_probability * 100).toFixed(1)}%
                   </span>
                 </div>

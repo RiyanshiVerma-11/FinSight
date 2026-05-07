@@ -42,6 +42,7 @@ class ShapFeature(BaseModel):
 class UserShapResponse(BaseModel):
     user_id: str
     churn_probability: float
+    risk_threshold: float = 0.5
     revenue_at_risk: float
     predicted_ltv: float
     segment: str

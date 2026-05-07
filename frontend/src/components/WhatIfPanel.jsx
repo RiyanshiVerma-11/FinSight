@@ -68,12 +68,12 @@ export default function WhatIfPanel({ segments, segChurn, onSimulationResult }) 
 
   const generateAbTest = () => {
     if (!result) return;
-    const sampleSize = Math.max(500, Math.floor(result.users_affected * 0.2));
-    const duration = Math.max(7, Math.floor(Math.random() * 14 + 7));
+    const sampleSize = Math.max(100, Math.ceil(result.users_affected * 0.2));
+    const duration = result.recommended_duration_days || 14;
     setAbTest({
       sampleSize,
       duration,
-      confidence: 95
+      confidence: result.recommended_confidence_pct || 95
     });
   };
 
