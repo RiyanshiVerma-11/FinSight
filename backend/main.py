@@ -183,7 +183,9 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         "hypotheses": hypotheses,
         "metrics": {
             "silhouette_score": float(silhouette),
-            "critical_threshold_users": int(len(final_df[final_df['frequency'] == 2])),
+            "total_high_risk_users": int(len(final_df[final_df['churn_probability'] >= metrics.get('optimal_threshold', 0.5)])),
+            "onboarding_risk_users": int(len(final_df[(final_df['lifecycle'] == 'New') & (final_df['churn_probability'] >= metrics.get('optimal_threshold', 0.5))])),
+            "critical_threshold_users": int(len(final_df[(final_df['lifecycle'] == 'New') & (final_df['churn_probability'] >= metrics.get('optimal_threshold', 0.5))])),
             **metrics,
         },
         "shap_data": shap_data,
@@ -214,8 +216,6 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     return {"summary": summary, "users": user_data}
 
 
-
-
 # ──────────────────────────────────────
 #  Warmup
 # ──────────────────────────────────────
@@ -233,11 +233,8 @@ def _warmup_dataset(fname):
         df = _read_file(fpath)
         df = _prepare_retail_df(df)
         
-        # Memory Guard: Aggressive sampling for warmup on free tier
-        if len(df) > 50000:
-            logger.info(f"⚡ Warmup Sampling: Reducing '{fname}' to 50,000 rows for memory safety.")
-            df = df.sample(50000, random_state=42).sort_values('timestamp')
-
+        # Memory Guard: Removed sampling to support full dataset analysis
+        # Only filtering for required columns now
         required = ['user_id', 'timestamp', 'amount']
         if not all(c in df.columns for c in required):
             logger.warning(f"⚠️  Skipping '{fname}' - missing columns")
@@ -376,8 +373,8 @@ async def get_default_data():
     fname = files[0]
     
     # 3. Wait for the background process to finish if it's already working on it
-    max_wait = 40  # Wait up to 40 seconds (Render timeout is usually 30-60s)
-    wait_interval = 2
+    max_wait = 120  # Increased for full dataset processing (no sampling)
+    wait_interval = 3
     for _ in range(0, max_wait, wait_interval):
         with _cache_lock:
             if fname in _results_cache:
@@ -428,11 +425,8 @@ async def analyze_data(file: UploadFile = File(...)):
                    "Please ensure your file has Customer ID, Date, and Amount/Price columns."
         )
     
-    # 4. Memory Guard: Sample large datasets on free tier to prevent OOM
-    if len(df) > 100000:
-        logger.info(f"⚡ Large dataset detected ({len(df)} rows). Sampling 100,000 rows for analysis to prevent memory crash.")
-        df = df.sample(100000, random_state=42).sort_values('timestamp')
-
+    # Memory Guard: Removed sampling to support full dataset analysis
+    # Churn engine will handle scaling internally
     try:
         return _process_dataframe(df, cache_key="upload")
     except Exception as e:
