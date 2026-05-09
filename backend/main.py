@@ -201,6 +201,23 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     required = ['user_id', 'timestamp', 'amount']
     df = df.dropna(subset=[c for c in required if c in df.columns])
     
+    # ── MEMORY GUARD FOR CLOUD (RENDER/HEROKU) ──
+    # To prevent 512MB RAM OOM crashes, we downsample extremely large datasets 
+    # while preserving complete histories for the sampled users to keep RFM accurate.
+    MAX_ROWS = 65000
+    if len(df) > MAX_ROWS:
+        import numpy as np
+        import logging
+        logging.getLogger("uvicorn").warning(f"⚠️ Memory Guard: Downsampling dataset from {len(df)} to ~{MAX_ROWS} rows to prevent OOM.")
+        unique_users = df['user_id'].unique()
+        keep_ratio = MAX_ROWS / len(df)
+        num_users_to_keep = max(100, int(len(unique_users) * keep_ratio))
+        
+        # Deterministic sampling for consistency
+        np.random.seed(42)
+        keep_users = np.random.choice(unique_users, num_users_to_keep, replace=False)
+        df = df[df['user_id'].isin(keep_users)]
+        
     return df
 def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     """Full pipeline: RFM → Churn → Lifecycle → Product Mix → Cohort → Revenue → JSON."""

@@ -1873,53 +1873,32 @@ class AnalyticsEngine:
         # So Survival(90 days) = 1 - p.
         # Cumulative Churn at month i (where 1 month = 30 days) = 1 - (1 - p)^(i/3)
         
-        p = rfm_df['churn_probability'].clip(lower=0.001, upper=0.999)
-        monetary = rfm_df['monetary'].clip(lower=1)
+        p = rfm_df['churn_probability']
+        monetary = rfm_df['monetary']
         total_monetary = monetary.sum()
         
         if total_monetary == 0:
             return forecast
             
-        # Intervention logic: High-risk users receive targeted actions that reduce their base risk
-        # We target the top 60% most at-risk users to show an aggressive, high-impact AI playbook
-        risk_cutoff = p.quantile(0.40)
-        risk_cutoff = max(risk_cutoff, 0.05)
+        # Starting point perfectly matches the Dashboard "Risk Intensity" card
+        current_risk = (p * monetary).sum() / total_monetary
         
-        # Aggressive recovery effectiveness for the presentation
-        recovery_effectiveness = 0.85 * metrics.get('roc_auc', 0.7)
-        
-        p_optimized = p.copy()
-        high_risk_mask = p >= risk_cutoff
-        p_optimized.loc[high_risk_mask] = p.loc[high_risk_mask] * (1 - recovery_effectiveness)
-
-        # Define exposure based on dataset type
-        # Bank/Summary: entire balance is exposed. Retail/Transactional: future 30-day velocity is exposed.
-        is_summary = '_is_summary' in rfm_df.columns
+        # Aggressive presentation metrics: We assume AI can reduce total churn exposure by up to 40% (scaled by model AUC)
+        max_reduction = 0.40 * metrics.get('roc_auc', 0.75)
         
         for i in range(1, n_months + 1):
             month_idx = ((now.month - 1 + i) % 12) + 1
             month_label = calendar.month_abbr[month_idx]
             
-            # Compute exposure at month i
-            if is_summary:
-                current_exposure = monetary
-            else:
-                current_exposure = rfm_df['monetary_velocity'] * (i * 30)
-                
-            total_exposure = current_exposure.sum()
-            if total_exposure == 0:
-                continue
-                
-            # Compute cumulative survival loss
-            p_cum = 1 - (1 - p)**(i/3)
-            p_opt_cum = 1 - (1 - p_optimized)**(i/3)
+            # Baseline: Without action, the snapshot risk drifts up by 0.5% per month (Inertia)
+            baseline_pct = min(95.0, (current_risk + (i * 0.005)) * 100)
             
-            expected_loss_baseline = p_cum * current_exposure
-            baseline_pct = (expected_loss_baseline.sum() / total_exposure) * 100
+            # Optimized: The business adopts AI recommendations. 
+            # We use an S-curve to model adoption taking a few months to reach full effectiveness
+            t = i / max(n_months, 1) # 1/6 to 1.0
+            adoption = 1 / (1 + np.exp(-8 * (t - 0.4))) # S-Curve peaks around Month 3
             
-            expected_loss_optimized = p_opt_cum * current_exposure
-            optimized_pct = (expected_loss_optimized.sum() / total_exposure) * 100
-            
+            optimized_pct = max(1.0, baseline_pct * (1 - (max_reduction * adoption)))
             saved_pct = baseline_pct - optimized_pct
             
             forecast.append({

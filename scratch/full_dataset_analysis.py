@@ -9,8 +9,8 @@ import logging
 from datetime import datetime
 
 # Add backend to path to import services
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
-from services.analytics import AnalyticsEngine
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backend'))
+from services.analytics import AnalyticsEngine  # type: ignore
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
