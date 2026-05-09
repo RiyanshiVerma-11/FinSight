@@ -1,0 +1,375 @@
+{
+    "individual": [
+        {
+            "filename": "Year 2009-2010.csv",
+            "total_users": 4383,
+            "revenue_at_risk": 899877.98,
+            "potential_recovery": 126930.98,
+            "metrics": {
+                "roc_auc": 0.7548100089488539,
+                "gini": 0.5096200178977077,
+                "cv_auc_mean": 0.7457058706804642,
+                "cv_auc_std": 0.008033200144926669,
+                "test_size": 690,
+                "train_size": 2759,
+                "primary_model": "XGBoost",
+                "optimal_threshold": 0.4377419618121651,
+                "threshold_strategy": "balanced_fp_fn",
+                "accuracy": 0.7087,
+                "confusion_matrix": {
+                    "tp": 207,
+                    "fp": 116,
+                    "fn": 85,
+                    "tn": 282,
+                    "tp_rate": 70.9,
+                    "fn_rate": 29.1,
+                    "tn_rate": 70.9,
+                    "fp_rate": 29.1,
+                    "recall": 70.9,
+                    "precision": 64.1,
+                    "specificity": 70.9
+                },
+                "f1": 0.6732,
+                "drift": {
+                    "features": {
+                        "Recency": {
+                            "ks_statistic": 0.039,
+                            "p_value": 0.3594,
+                            "drifted": false
+                        },
+                        "Recency Deviation": {
+                            "ks_statistic": 0.035,
+                            "p_value": 0.4947,
+                            "drifted": false
+                        },
+                        "Frequency": {
+                            "ks_statistic": 0.0232,
+                            "p_value": 0.9196,
+                            "drifted": false
+                        },
+                        "Monetary": {
+                            "ks_statistic": 0.0287,
+                            "p_value": 0.7418,
+                            "drifted": false
+                        },
+                        "Avg Basket Value": {
+                            "ks_statistic": 0.0447,
+                            "p_value": 0.2144,
+                            "drifted": false
+                        },
+                        "Ipi Median": {
+                            "ks_statistic": 0.0192,
+                            "p_value": 0.9842,
+                            "drifted": false
+                        },
+                        "Ipi Std": {
+                            "ks_statistic": 0.0393,
+                            "p_value": 0.3515,
+                            "drifted": false
+                        },
+                        "Ipi Consistency": {
+                            "ks_statistic": 0.0393,
+                            "p_value": 0.3515,
+                            "drifted": false
+                        },
+                        "Monetary Velocity": {
+                            "ks_statistic": 0.0228,
+                            "p_value": 0.928,
+                            "drifted": false
+                        }
+                    },
+                    "avg_p_value": 0.2144,
+                    "status": "STABLE"
+                },
+                "model_comparison": [
+                    {
+                        "model": "Random Forest",
+                        "auc": 0.7536827975493907,
+                        "f1": 0.6285714285714286
+                    },
+                    {
+                        "model": "XGBoost",
+                        "auc": 0.7536827975493907,
+                        "f1": 0.6285714285714286
+                    }
+                ]
+            },
+            "critical_users_count": 0,
+            "risk_users_count": 1898,
+            "top_critical_users": [],
+            "top_risk_users": [
+                {
+                    "user_id": "12427",
+                    "churn_probability": 0.5235464978721074,
+                    "revenue_at_risk": 1967.04
+                },
+                {
+                    "user_id": "15165",
+                    "churn_probability": 0.5093313476011573,
+                    "revenue_at_risk": 1967.04
+                },
+                {
+                    "user_id": "17448",
+                    "churn_probability": 0.45948647619914534,
+                    "revenue_at_risk": 1967.04
+                },
+                {
+                    "user_id": "17674",
+                    "churn_probability": 0.5255820094646183,
+                    "revenue_at_risk": 1967.04
+                },
+                {
+                    "user_id": "13369",
+                    "churn_probability": 0.5318267898227997,
+                    "revenue_at_risk": 1967.04
+                }
+            ],
+            "segments": {
+                "Loyalists": 892,
+                "Champions": 883,
+                "Promising": 837,
+                "Needs Attention": 651,
+                "Hibernating": 614,
+                "At Risk": 506
+            }
+        },
+        {
+            "filename": "Year 2010-2011.csv",
+            "total_users": 4372,
+            "revenue_at_risk": 848366.84,
+            "potential_recovery": 78971.76,
+            "metrics": {
+                "roc_auc": 0.7402079388456414,
+                "gini": 0.4804158776912828,
+                "cv_auc_mean": 0.7499905590762248,
+                "cv_auc_std": 0.012652203826873666,
+                "test_size": 683,
+                "train_size": 2729,
+                "primary_model": "XGBoost",
+                "optimal_threshold": 0.5038677233485618,
+                "threshold_strategy": "balanced_fp_fn",
+                "accuracy": 0.694,
+                "confusion_matrix": {
+                    "tp": 195,
+                    "fp": 113,
+                    "fn": 96,
+                    "tn": 279,
+                    "tp_rate": 67.0,
+                    "fn_rate": 33.0,
+                    "tn_rate": 71.2,
+                    "fp_rate": 28.8,
+                    "recall": 67.0,
+                    "precision": 63.3,
+                    "specificity": 71.2
+                },
+                "f1": 0.6511,
+                "drift": {
+                    "features": {
+                        "Recency": {
+                            "ks_statistic": 0.0354,
+                            "p_value": 0.4866,
+                            "drifted": false
+                        },
+                        "Recency Deviation": {
+                            "ks_statistic": 0.0413,
+                            "p_value": 0.2998,
+                            "drifted": false
+                        },
+                        "Frequency": {
+                            "ks_statistic": 0.0322,
+                            "p_value": 0.6096,
+                            "drifted": false
+                        },
+                        "Monetary": {
+                            "ks_statistic": 0.0284,
+                            "p_value": 0.7562,
+                            "drifted": false
+                        },
+                        "Avg Basket Value": {
+                            "ks_statistic": 0.0291,
+                            "p_value": 0.7321,
+                            "drifted": false
+                        },
+                        "Ipi Median": {
+                            "ks_statistic": 0.0029,
+                            "p_value": 1.0,
+                            "drifted": false
+                        },
+                        "Ipi Std": {
+                            "ks_statistic": 0.0341,
+                            "p_value": 0.5371,
+                            "drifted": false
+                        },
+                        "Ipi Consistency": {
+                            "ks_statistic": 0.0341,
+                            "p_value": 0.5371,
+                            "drifted": false
+                        },
+                        "Monetary Velocity": {
+                            "ks_statistic": 0.0272,
+                            "p_value": 0.8019,
+                            "drifted": false
+                        }
+                    },
+                    "avg_p_value": 0.2998,
+                    "status": "STABLE"
+                },
+                "model_comparison": [
+                    {
+                        "model": "Random Forest",
+                        "auc": 0.7403350515463918,
+                        "f1": 0.6511627906976745
+                    },
+                    {
+                        "model": "XGBoost",
+                        "auc": 0.7403350515463918,
+                        "f1": 0.6511627906976745
+                    }
+                ]
+            },
+            "critical_users_count": 0,
+            "risk_users_count": 1603,
+            "top_critical_users": [],
+            "top_risk_users": [
+                {
+                    "user_id": "13017",
+                    "churn_probability": 0.6414737142602868,
+                    "revenue_at_risk": 1672.85
+                },
+                {
+                    "user_id": "13298",
+                    "churn_probability": 0.5385879824241954,
+                    "revenue_at_risk": 1672.85
+                },
+                {
+                    "user_id": "15749",
+                    "churn_probability": 0.5780493722160496,
+                    "revenue_at_risk": 1672.85
+                },
+                {
+                    "user_id": "15619",
+                    "churn_probability": 0.508364639930332,
+                    "revenue_at_risk": 1399.2
+                },
+                {
+                    "user_id": "17985",
+                    "churn_probability": 0.5073392004060221,
+                    "revenue_at_risk": 1317.83
+                }
+            ],
+            "segments": {
+                "Loyalists": 914,
+                "Champions": 857,
+                "Promising": 800,
+                "Needs Attention": 690,
+                "Hibernating": 604,
+                "At Risk": 507
+            }
+        }
+    ],
+    "combined": {
+        "filename": "Combined (2009-2011)",
+        "total_users": 5942,
+        "revenue_at_risk": 854496.49,
+        "potential_recovery": 105195.83,
+        "metrics": {
+            "roc_auc": 0.8247649515684706,
+            "gini": 0.6495299031369413,
+            "cv_auc_mean": 0.808978725781724,
+            "cv_auc_std": 0.008556166175807277,
+            "test_size": 1070,
+            "train_size": 4276,
+            "primary_model": "XGBoost",
+            "optimal_threshold": 0.5676749510987893,
+            "threshold_strategy": "balanced_fp_fn",
+            "accuracy": 0.7598,
+            "confusion_matrix": {
+                "tp": 471,
+                "fp": 123,
+                "fn": 134,
+                "tn": 342,
+                "tp_rate": 77.9,
+                "fn_rate": 22.1,
+                "tn_rate": 73.5,
+                "fp_rate": 26.5,
+                "recall": 77.9,
+                "precision": 79.3,
+                "specificity": 73.5
+            },
+            "f1": 0.7857,
+            "drift": {
+                "features": {
+                    "Recency": {
+                        "ks_statistic": 0.0245,
+                        "p_value": 0.6708,
+                        "drifted": false
+                    },
+                    "Recency Deviation": {
+                        "ks_statistic": 0.0234,
+                        "p_value": 0.7277,
+                        "drifted": false
+                    },
+                    "Frequency": {
+                        "ks_statistic": 0.0167,
+                        "p_value": 0.9662,
+                        "drifted": false
+                    },
+                    "Monetary": {
+                        "ks_statistic": 0.0249,
+                        "p_value": 0.6511,
+                        "drifted": false
+                    },
+                    "Avg Basket Value": {
+                        "ks_statistic": 0.0262,
+                        "p_value": 0.5895,
+                        "drifted": false
+                    },
+                    "Ipi Median": {
+                        "ks_statistic": 0.0047,
+                        "p_value": 1.0,
+                        "drifted": false
+                    },
+                    "Ipi Std": {
+                        "ks_statistic": 0.0476,
+                        "p_value": 0.0401,
+                        "drifted": true
+                    },
+                    "Ipi Consistency": {
+                        "ks_statistic": 0.0476,
+                        "p_value": 0.0401,
+                        "drifted": true
+                    },
+                    "Monetary Velocity": {
+                        "ks_statistic": 0.0227,
+                        "p_value": 0.7592,
+                        "drifted": false
+                    }
+                },
+                "avg_p_value": 0.0401,
+                "status": "LOW DRIFT"
+            },
+            "model_comparison": [
+                {
+                    "model": "Random Forest",
+                    "auc": 0.8256358304452146,
+                    "f1": 0.8052347959969207
+                },
+                {
+                    "model": "XGBoost",
+                    "auc": 0.8256358304452146,
+                    "f1": 0.8052347959969207
+                }
+            ]
+        },
+        "critical_users_count": 1704,
+        "risk_users_count": 1193,
+        "segments": {
+            "Loyalists": 1289,
+            "Champions": 1166,
+            "Promising": 1081,
+            "Needs Attention": 971,
+            "Hibernating": 815,
+            "At Risk": 620
+        }
+    }
+}

@@ -36,23 +36,25 @@ const MOCK_DATA = {
 };
 
 describe('ExecutiveDashboard', () => {
-  const onClose = vi.fn();
+  const onExportAll = vi.fn();
+  const onNavigate = vi.fn();
 
   beforeEach(() => {
-    onClose.mockClear();
-    render(<ExecutiveDashboard data={MOCK_DATA} onClose={onClose} />);
+    onExportAll.mockClear();
+    onNavigate.mockClear();
+    render(<ExecutiveDashboard data={MOCK_DATA} onExportAll={onExportAll} onNavigate={onNavigate} />);
   });
 
   // ── Rendering ─────────────────────────────────────────────────────────
-  it('renders the modal heading', () => {
-    expect(screen.getByText(/Executive Dashboard/i)).toBeInTheDocument();
+  it('renders the dashboard heading', () => {
+    expect(screen.getByText(/Executive Intelligence Dashboard/i)).toBeInTheDocument();
   });
 
   it('renders all 4 KPI cards', () => {
-    expect(screen.getByText(/Total Users/i)).toBeInTheDocument();
-    expect(screen.getByText(/Avg Churn Risk/i)).toBeInTheDocument();
-    expect(screen.getByText(/Revenue at Risk/i)).toBeInTheDocument();
-    expect(screen.getByText(/Potential Saved/i)).toBeInTheDocument();
+    expect(screen.getByText(/Market Footprint/i)).toBeInTheDocument();
+    expect(screen.getByText(/Risk Intensity/i)).toBeInTheDocument();
+    expect(screen.getByText(/Revenue Exposure/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recovery Capture/i)).toBeInTheDocument();
   });
 
   // ── KPI values ────────────────────────────────────────────────────────
@@ -64,32 +66,26 @@ describe('ExecutiveDashboard', () => {
     expect(screen.getByText('34.0%')).toBeInTheDocument();
   });
 
-  it('displays revenue at risk with $ prefix', () => {
-    expect(screen.getByText(/\$840,000/)).toBeInTheDocument();
+  it('displays revenue at risk with ₹ prefix and Lakh formatting', () => {
+    // 840,000 should format to ₹8.40L
+    expect(screen.getByText(/₹8\.40L/)).toBeInTheDocument();
   });
 
-  // ── Before vs After table ─────────────────────────────────────────────
-  it('renders Before vs After section', () => {
-    expect(screen.getByText(/Without vs With FinSight/i)).toBeInTheDocument();
+  // ── Visualizations ─────────────────────────────────────────────
+  it('renders Strategic Playbook section', () => {
+    expect(screen.getByText(/Strategic Playbook/i)).toBeInTheDocument();
   });
 
-  it('shows "Segmentation" row in before/after table', () => {
-    expect(screen.getByText('Segmentation')).toBeInTheDocument();
+  it('shows segmentation chart header', () => {
+    expect(screen.getByText(/Segment Distribution/i)).toBeInTheDocument();
   });
 
-  it('shows "Dynamic RFM" in after column', () => {
-    expect(screen.getByText(/Dynamic RFM/i)).toBeInTheDocument();
+  it('shows lifecycle stages header', () => {
+    expect(screen.getByText(/Customer Lifecycle Stages/i)).toBeInTheDocument();
   });
 
   // ── Segment churn ─────────────────────────────────────────────────────
   it('renders segment names in churn section', () => {
     expect(screen.getByText('At Risk')).toBeInTheDocument();
-  });
-
-  // ── Close handler ─────────────────────────────────────────────────────
-  it('calls onClose when close button clicked', () => {
-    const closeBtn = screen.getByRole('button', { name: /close|×|x/i });
-    fireEvent.click(closeBtn);
-    expect(onClose).toHaveBeenCalledOnce();
   });
 });

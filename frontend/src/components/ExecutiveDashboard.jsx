@@ -9,6 +9,7 @@ import {
   Target, Zap, CheckCircle, X, LayoutDashboard, Download, 
   FileText, Briefcase, Activity, Award, AlertTriangle, Lightbulb, Brain, Info, MessageSquare, ShieldCheck
 } from 'lucide-react';
+import FormulaTooltip from './FormulaTooltip';
 
 const COLORS = ['#6366f1', '#ec4899', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
 
@@ -24,23 +25,44 @@ const SEGMENT_COLORS = {
 const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4'];
 
 const formatCurrency = (val) => {
-  if (val === undefined || val === null) return '₹0';
-  const num = Number(val);
-  if (num >= 100000) {
-    return `₹${(num / 100000).toFixed(2)}L`;
-  } else if (num >= 1000) {
-    return `₹${(num / 1000).toFixed(1)}K`;
+  try {
+    if (val === undefined || val === null) return '₹0';
+    
+    // Extract numeric value from potentially complex backend objects
+    let num;
+    if (typeof val === 'object' && val !== null) {
+      num = Number(val.value ?? val.amount ?? val.total ?? 0);
+    } else {
+      num = Number(val);
+    }
+
+    // Safety fallback for non-numeric results (NaN, Infinity, etc.)
+    if (isNaN(num) || !isFinite(num)) return '₹0';
+    
+    if (num >= 10000000) { // 1 Crore+
+       return `₹${(num / 10000000).toFixed(2)}Cr`;
+    } else if (num >= 100000) { // 1 Lakh+
+      return `₹${(num / 100000).toFixed(2)}L`;
+    } else if (num >= 1000) { // 1 Thousand+
+      return `₹${(num / 1000).toFixed(1)}K`;
+    }
+    return `₹${Math.round(num).toLocaleString('en-IN')}`;
+  } catch (e) {
+    console.error("Currency formatting error:", e);
+    return '₹0';
   }
-  return `₹${Math.round(num).toLocaleString('en-IN')}`;
 };
 
 const formatExactCurrency = (val) => {
   if (val === undefined || val === null) return '₹0';
+  const num = typeof val === 'object' ? Number(val?.value ?? 0) : Number(val);
+  if (isNaN(num)) return '₹0';
+
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 0
-  }).format(val);
+  }).format(num);
 };
 
 const formatMetricPct = (value) => (
@@ -76,30 +98,53 @@ const CustomTooltip = ({ active, payload, label }) => {
 export default function ExecutiveDashboard({ data, globalSimResult, onExportAll, onNavigate }) {
   const [showOnboardingList, setShowOnboardingList] = useState(false);
   const [selectedHypothesis, setSelectedHypothesis] = useState(null);
-  const [hoveredKPI, setHoveredKPI] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const s = data?.summary;
-  const rar = s?.revenue_at_risk;
+  const s = data?.summary || {};
+  const rar = s?.revenue_at_risk || {};
   const segChurn = s?.segment_churn || [];
   const totalUsers = s?.total_users || 0;
   const riskThreshold = s?.model_info?.optimal_threshold ?? s?.metrics?.optimal_threshold ?? 0.5;
   
+  // ── Financial Extraction (Memoized for safety) ──
+  const revAtRisk = useMemo(() => {
+    const raw = s?.revenue_at_risk;
+    if (typeof raw === 'object' && raw !== null) return Number(raw.total ?? raw.value ?? 0);
+    return Number(raw) || 0;
+  }, [s?.revenue_at_risk]);
+
+  const potentialSaved = useMemo(() => {
+    const raw = s?.potential_recovery;
+    if (typeof raw === 'object' && raw !== null) return Number(raw.value ?? raw.amount ?? 0);
+    return Number(raw) || 0;
+  }, [s?.potential_recovery]);
+
+  const recoveryEfficiency = useMemo(() => {
+    const raw = s?.potential_recovery;
+    if (typeof raw === 'object' && raw !== null) return Number(raw.efficiency_pct ?? 45.0);
+    return 45.0;
+  }, [s?.potential_recovery]);
+
+  const forecastData = useMemo(() => s?.forecast || [], [s?.forecast]);
+
   let currentChurnRisk = s?.avg_churn_risk || 0;
   if (globalSimResult && totalUsers > 0) {
       const churnDecrease = (globalSimResult.original_churn - globalSimResult.simulated_churn) * globalSimResult.users_affected / totalUsers;
       currentChurnRisk -= churnDecrease;
   }
-  const churnPct = (currentChurnRisk * 100).toFixed(1);
-  const revAtRisk = rar?.total || 0;
-  
-  const forecastData = s?.forecast || [];
-  const potentialSaved = s?.potential_recovery || 0;
+  const churnPct = (currentChurnRisk * 100 || 0).toFixed(1);
 
   // Strategic Insights based on data health and drift
   const driftStatus = s?.metrics?.drift?.status || 'STABLE';
   const confidence = s?.data_health?.score || 0;
+
+  // ── Dynamic Priority Segment Logic ──
+  const sortedSegments = [...segChurn].sort((a,b) => b.avg_churn - a.avg_churn);
+  const topRiskSeg = sortedSegments[0];
+  const prioritySegmentName = s?.metrics?.onboarding_risk_users > (totalUsers * 0.15) 
+    ? "Onboarding" 
+    : (topRiskSeg?.segment || "At Risk");
 
   return (
     <div className="executive-view-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -200,8 +245,8 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                   Currently, <strong style={{ color: '#e11d48' }}>{formatCurrency(revAtRisk)}</strong> is at high risk of churn, primarily driven by 
                   <span style={{ color: '#4f46e5', fontWeight: 800 }}> {s?.top_drivers?.[0]?.feature || 'Behavioral Volatility'}</span>. 
                   However, this is not just a loss—it's an opportunity. By deploying our recommended <strong>Strategic Playbook</strong>, 
-                  we can effectively <strong>recover {formatCurrency(potentialSaved)}</strong> with a projected ROI of 4.2x. 
-                  The immediate command priority is the <strong style={{ color: '#0891b2' }}>'Onboarding'</strong> segment, where <strong style={{ color: '#e11d48' }}>{s?.metrics?.onboarding_risk_users || 0} users</strong> are at critical risk, out of <span style={{ color: '#6366f1' }}>{s?.metrics?.total_high_risk_users || 0} total</span> high-risk profiles detected.
+                  we can effectively <strong>recover {formatCurrency(potentialSaved)}</strong> through targeted AI-driven interventions. 
+                  The immediate command priority is the <strong style={{ color: '#0891b2' }}>'{prioritySegmentName}'</strong> segment, where <strong style={{ color: '#e11d48' }}>{s?.metrics?.total_high_risk_users || 0} users</strong> are at critical risk.
                 </p>
                 <div style={{ marginTop: '2rem', display: 'flex', gap: '3rem', flexWrap: 'wrap' }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', fontWeight: 800 }}>
@@ -212,13 +257,14 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', fontWeight: 800 }}>
                       <AlertTriangle size={18} color="#f59e0b" />
                       <span style={{ color: 'var(--text-muted)' }}>Urgent Priority:</span> 
-                      <span style={{ color: '#f59e0b' }}>{s?.metrics?.onboarding_risk_users || 0} Onboarding Risk</span>
+                      <span style={{ color: '#f59e0b' }}>{prioritySegmentName} Segment</span>
                    </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
 
         {/* KPI Row */}
         <div className="exec-kpi-row" style={{ padding: '2rem 2.5rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
@@ -228,21 +274,21 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
               icon: Users, label: 'Market Footprint', value: totalUsers.toLocaleString(), 
               sub: 'Total Profiles', color: '#6366f1', bg: 'rgba(99,102,241,0.08)',
               desc: 'Overall customer base being monitored.',
-              logic: `Count of unique User IDs in the active dataset (${totalUsers.toLocaleString()} profiles).`
+              logic: `Computed from: Count of unique User IDs in the active dataset (${totalUsers.toLocaleString()} profiles).`
             },
             { 
               id: 'risk',
               icon: AlertTriangle, label: 'Risk Intensity', value: `${churnPct}%`, 
               sub: 'Churn Probability', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',
               desc: 'Likelihood of customers leaving in 30 days.',
-              logic: "Calculated as the Revenue-Weighted Average of Churn Probabilities across all segments."
+              logic: "Computed from: Σ(User Churn Prob × User Monetary) / Σ(Total Monetary). A revenue-weighted average of churn risk across all segments."
             },
             { 
               id: 'exposure',
               icon: DollarSign, label: 'Revenue Exposure', value: formatCurrency(revAtRisk), 
               sub: 'Capital at Stake', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',
               desc: 'Total revenue potentially lost if no action taken.',
-              logic: `Sum of (Daily Spending Velocity × 90 Days × Churn Probability) for every user. Exact Value: ${formatExactCurrency(revAtRisk)}`
+              logic: `Computed from: Σ(Daily Velocity × 90 Days × Churn Prob) for every user. Reflects 90-day projected capital risk. Exact: ${formatExactCurrency(revAtRisk)}`
             },
             { 
               id: 'capture',
@@ -250,68 +296,49 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
               sub: 'Actionable ROI', color: '#10b981', bg: 'rgba(16,185,129,0.08)', 
               action: 'simulation',
               desc: 'Revenue we can save via AI-driven interventions.',
-              logic: `Calculated by simulating a 45% reduction in churn risk for all users with >30% probability. Exact Value: ${formatExactCurrency(potentialSaved)}`
+              logic: `Computed from: (Revenue Exposure of At-Risk Segments) × (Model Accuracy × 0.5). Simulates a ${recoveryEfficiency}% risk reduction. Exact: ${formatExactCurrency(potentialSaved)}`
             },
           ].map(({ id, icon: Icon, label, value, sub, color, bg, action, desc, logic }, i) => (
-            <motion.div 
-              key={i} 
-              onHoverStart={() => setHoveredKPI(id)}
-              onHoverEnd={() => setHoveredKPI(null)}
-              whileHover={{ y: -5 }}
-              style={{ 
-                background: 'var(--bg-input)', padding: '1.5rem', borderRadius: '24px', 
-                border: hoveredKPI === id ? `1px solid ${color}` : '1px solid var(--border)', 
-                transition: 'all 0.3s', 
-                position: 'relative', overflow: 'hidden',
-                cursor: 'help'
-              }}
-            >
-              <AnimatePresence>
-                {hoveredKPI === id && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    style={{
-                      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                      background: bg, backdropFilter: 'blur(4px)', zIndex: 10,
-                      padding: '1.25rem', display: 'flex', flexDirection: 'column',
-                      justifyContent: 'center', border: `1px solid ${color}`
+            <FormulaTooltip key={i} formula={logic} color={color}>
+              <motion.div 
+                whileHover={{ y: -5 }}
+                style={{ 
+                  background: 'var(--bg-input)', padding: '1.5rem', borderRadius: '24px', 
+                  border: '1px solid var(--border)', 
+                  transition: 'all 0.3s', 
+                  position: 'relative', overflow: 'hidden',
+                  cursor: 'help',
+                  height: '100%'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <div style={{ color, background: bg, width: 44, height: 44, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon size={22} />
+                  </div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{sub}</div>
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '0.2rem' }}>{label}</div>
+                <div style={{ fontSize: '1.85rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>{value}</div>
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.4 }}>{desc}</p>
+                {action && onNavigate && (
+                  <div 
+                    onClick={(e) => { e.stopPropagation(); onNavigate(action); }}
+                    style={{ 
+                      marginTop: '1.25rem', padding: '0.6rem', background: bg, color: color, 
+                      borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, 
+                      display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem',
+                      cursor: 'pointer', border: `1px solid ${color}30`,
+                      transition: 'all 0.2s',
+                      boxShadow: `0 4px 12px ${color}15`
                     }}
+                    onMouseOver={(e) => { e.currentTarget.style.background = `${color}25`; }}
+                    onMouseOut={(e) => { e.currentTarget.style.background = bg; }}
                   >
-                    <div style={{ fontSize: '0.65rem', fontWeight: 900, color: color, textTransform: 'uppercase', marginBottom: '0.5rem', letterSpacing: '0.1em' }}>Calculation Logic</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.4 }}>{logic}</div>
-                  </motion.div>
+                    <Zap size={14} /> Open Decision Tuner &rarr;
+                  </div>
                 )}
-              </AnimatePresence>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                <div style={{ color, background: bg, width: 44, height: 44, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon size={22} />
-                </div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{sub}</div>
-              </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '0.2rem' }}>{label}</div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>{value}</div>
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.4 }}>{desc}</p>
-              {action && onNavigate && (
-                <div 
-                  onClick={(e) => { e.stopPropagation(); onNavigate(action); }}
-                  style={{ 
-                    marginTop: '1.25rem', padding: '0.6rem', background: bg, color: color, 
-                    borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, 
-                    display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem',
-                    cursor: 'pointer', border: `1px solid ${color}30`,
-                    transition: 'all 0.2s',
-                    boxShadow: `0 4px 12px ${color}15`
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.background = `${color}25`; }}
-                  onMouseOut={(e) => { e.currentTarget.style.background = bg; }}
-                >
-                  <Zap size={14} /> Open Decision Tuner &rarr;
-                </div>
-              )}
-            </motion.div>
+              </motion.div>
+            </FormulaTooltip>
           ))}
         </div>
 
@@ -502,6 +529,72 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                    </div>
                 </div>
              )}
+
+             {/* ── COMMAND CENTER (Repositioned precisely within the left column) ── */}
+             <div style={{ 
+                background: 'var(--bg-card)', 
+                borderRadius: '24px', 
+                padding: '2rem',
+                border: '1px solid var(--border)',
+                position: 'relative',
+                overflow: 'hidden',
+                marginTop: '2rem',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.02)'
+             }}>
+                <Zap size={100} style={{ position: 'absolute', right: '-20px', bottom: '-20px', color: 'rgba(99,102,241,0.05)', transform: 'rotate(-15deg)' }} />
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                   <div style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', padding: '0.5rem', borderRadius: '10px' }}>
+                      <Zap size={20} fill="#f59e0b" />
+                   </div>
+                   <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, letterSpacing: '-0.02em', color: 'var(--text-primary)', textTransform: 'uppercase' }}>What should I do now?</h2>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '2rem', position: 'relative', zIndex: 1 }}>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>1. Target Segment First</span>
+                      <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#f59e0b' }}>{prioritySegmentName}</span>
+                   </div>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>2. Primary "Why"</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                         {s?.top_drivers?.[0]?.feature || 'Behavioral'} anomaly detected. {s?.top_drivers?.[0]?.direction === 'increases_churn' ? 'Increasing' : 'Declining'} patterns indicate imminent churn.
+                      </span>
+                   </div>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>3. Est. Revenue Protected</span>
+                      <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#10b981' }}>{formatCurrency(potentialSaved)}</span>
+                   </div>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>4. Recommended Campaign</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4 }}>{s?.hypotheses?.[0]?.test || 'Targeted re-engagement nudges.'}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                       <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>5. Confidence & Caveat</span>
+                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          <span style={{ fontSize: '0.95rem', fontWeight: 900, color: '#6366f1' }}>{confidence}% Model Health</span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                             {driftStatus === 'STABLE' ? 'Baseline remains stable.' : 'Significant market drift detected.'}
+                          </span>
+                       </div>
+                    </div>
+                 </div>
+                 
+                 {onNavigate && (
+                   <button 
+                     onClick={() => onNavigate('explainability')}
+                     style={{ 
+                       marginTop: '2rem', width: '100%', padding: '0.75rem', borderRadius: '12px',
+                       background: 'var(--bg-input)', border: '1px solid var(--border)',
+                       color: 'var(--text-secondary)', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer',
+                       display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem',
+                       transition: 'all 0.2s'
+                     }}
+                   >
+                     <Brain size={14} /> Audit Model Evidence &rarr;
+                   </button>
+                 )}
+              </div>
           </div>
 
           {/* Right Column: Strategic Insights & Decision Intelligence */}
@@ -647,13 +740,12 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
              </div>
           </div>
         </div>
-
         <div style={{ padding: '1.25rem 2.5rem', background: 'rgba(0,0,0,0.02)', borderTop: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 700 }}>
               <Info size={14} />
               Probabilistic intelligence engine active. Data updated in real-time. (Last updated: {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})
            </div>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '0.3rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '0.3rem 0.8rem', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
                FinSight AI (ROC-AUC {formatMetricPct(s?.metrics?.roc_auc)}) {s?.metrics?.roc_auc === undefined ? 'awaiting model evidence' : `outperforms standard baseline by +${((s.metrics.roc_auc / 0.68 * 100) - 100).toFixed(1)}%`}
             </div>
            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>

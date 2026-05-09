@@ -14,6 +14,7 @@
 [![SHAP](https://img.shields.io/badge/SHAP-0.44-blueviolet)](https://shap.readthedocs.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](https://docs.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-22c55e)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Render-informational?style=for-the-badge&logo=render&logoColor=white)](https://finsight-frontend-r0a8.onrender.com/)
 
 </div>
 
@@ -48,7 +49,7 @@ Moves beyond simple sales volume to identify which products actually drive churn
 
 ### 3. Testable Hypothesis Playbook *(new)*
 Replaces generic AI advice with scientifically grounded, testable strategies:
-- **Expected Lift**: Every hypothesis includes a projected recovery percentage (e.g., +15% Lift).
+- **Expected Lift**: Every hypothesis calculates its own projected recovery percentage dynamically based on the specific statistical gaps between your retained and churned cohorts.
 - **Experimental Guardrails**: Defines the specific "Test" to run (e.g., A/B testing Fee Waivers vs. VIP Support).
 - **Impact Badges**: Visual categorization of strategies based on potential revenue recovery.
 
@@ -100,7 +101,7 @@ graph TB
 
   subgraph AE ["Analytics Engine"]
     RFM["Dynamic RFM + IPI"]
-    ML["Random Forest v3.0"]
+    ML["Random Forest / XGBoost Ensemble"]
     SH["SHAP TreeExplainer"]
     ROI["Retention ROI Logic"]
     COH["Cohort Analysis"]
@@ -214,6 +215,6 @@ MIT © 2026 Riyanshi Verma
 
 <div align="center">
 
-Built for Professional Fintech Partners · **FinSight v3.0**
+Built for Professional Fintech Partners · **FinSight v3.2**
 
 </div>

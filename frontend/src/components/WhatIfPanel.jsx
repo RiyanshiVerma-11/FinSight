@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import {
   Sliders, Play, DollarSign, TrendingDown, Users, ArrowRight,
-  Zap, Gift, Bell, Smartphone, Tag, Trophy, FlaskConical
+  Zap, Gift, Bell, Smartphone, Tag, Trophy, FlaskConical, Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import FormulaTooltip from './FormulaTooltip';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -203,81 +204,93 @@ export default function WhatIfPanel({ segments, segChurn, onSimulationResult }) 
             exit={{ opacity: 0, y: -10 }}
           >
             {/* Big hero card - Revenue Saved / Lost */}
-            <motion.div
-              className="impact-hero-card"
-              initial={{ scale: 0.88, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-              style={{ background: isPositive ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
-            >
-              <div className="impact-hero-icon">₹</div>
-              <div className="impact-hero-label">{isPositive ? 'Predicted Revenue Saved' : 'Potential Revenue Loss'}</div>
-              <div className="impact-hero-value">
-                <AnimatedNumber value={result.revenue_saved || 0} prefix="₹" decimals={0} />
-              </div>
-              <div className="impact-hero-sub">
-                {isPositive 
-                  ? `with this intervention · ${result.users_affected} users protected` 
-                  : `due to churn increase · ${result.users_affected} users at higher risk`}
-              </div>
-            </motion.div>
+            <FormulaTooltip formula="(Original Churn - Simulated Churn) × Users Affected × Avg LTV" color="#ffffff" title="Revenue Computation">
+              <motion.div
+                className="impact-hero-card"
+                initial={{ scale: 0.88, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+                style={{ background: isPositive ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #f43f5e, #e11d48)', cursor: 'help' }}
+              >
+                <div className="impact-hero-icon">₹</div>
+                <div className="impact-hero-label">{isPositive ? 'Predicted Revenue Saved' : 'Potential Revenue Loss'}</div>
+                <div className="impact-hero-value">
+                  <AnimatedNumber value={result.revenue_saved || 0} prefix="₹" decimals={0} />
+                </div>
+                <div className="impact-hero-sub">
+                  {isPositive 
+                    ? `with this intervention · ${result.users_affected} users protected` 
+                    : `due to churn increase · ${result.users_affected} users at higher risk`}
+                </div>
+              </motion.div>
+            </FormulaTooltip>
 
             {/* Delta cards */}
             <div className="whatif-result-cards" style={{ marginTop: '1rem' }}>
-              <div className="whatif-card">
-                <div className="whatif-card-label">Original Churn</div>
-                <div className="whatif-card-value" style={{ color: '#f43f5e' }}>
-                  <AnimatedNumber value={(result.original_churn * 100)} suffix="%" decimals={1} />
+              <FormulaTooltip formula="Base churn rate for this segment before any modification.">
+                <div className="whatif-card" style={{ cursor: 'help', height: '100%' }}>
+                  <div className="whatif-card-label">Original Churn</div>
+                  <div className="whatif-card-value" style={{ color: '#f43f5e' }}>
+                    <AnimatedNumber value={(result.original_churn * 100)} suffix="%" decimals={1} />
+                  </div>
                 </div>
-              </div>
+              </FormulaTooltip>
               <ArrowRight size={24} style={{ color: '#94a3b8', alignSelf: 'center' }} />
-              <div className="whatif-card">
-                <div className="whatif-card-label">Simulated Churn</div>
-                <div className="whatif-card-value" style={{ color: result.simulated_churn < result.original_churn ? '#10b981' : '#f43f5e' }}>
-                  <AnimatedNumber value={(result.simulated_churn * 100)} suffix="%" decimals={1} />
+              <FormulaTooltip formula="New churn rate predicted after applying the feature delta.">
+                <div className="whatif-card" style={{ cursor: 'help', height: '100%' }}>
+                  <div className="whatif-card-label">Simulated Churn</div>
+                  <div className="whatif-card-value" style={{ color: result.simulated_churn < result.original_churn ? '#10b981' : '#f43f5e' }}>
+                    <AnimatedNumber value={(result.simulated_churn * 100)} suffix="%" decimals={1} />
+                  </div>
                 </div>
-              </div>
+              </FormulaTooltip>
 
-              <div className={`whatif-card whatif-card--highlight ${isPositive ? 'whatif-card--green' : 'whatif-card--red'}`}>
-                <div className="whatif-card-label">
-                  <TrendingDown size={14} /> Churn Reduction
+              <FormulaTooltip formula="Absolute difference between Original and Simulated churn rates." color={isPositive ? '#10b981' : '#f43f5e'}>
+                <div className={`whatif-card whatif-card--highlight ${isPositive ? 'whatif-card--green' : 'whatif-card--red'}`} style={{ cursor: 'help', height: '100%' }}>
+                  <div className="whatif-card-label">
+                    <TrendingDown size={14} /> Churn Reduction
+                  </div>
+                  <div className="whatif-card-value" style={{ color: isPositive ? '#10b981' : '#f43f5e' }}>
+                    <AnimatedNumber value={Math.abs(churnImprovement)} suffix="%" decimals={1} />
+                  </div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: isPositive ? '#10b981' : '#f43f5e', marginTop: '0.2rem' }}>
+                    {isPositive ? '▼ REDUCED' : '▲ INCREASED'}
+                  </div>
                 </div>
-                <div className="whatif-card-value" style={{ color: isPositive ? '#10b981' : '#f43f5e' }}>
-                  <AnimatedNumber value={Math.abs(churnImprovement)} suffix="%" decimals={1} />
-                </div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: isPositive ? '#10b981' : '#f43f5e', marginTop: '0.2rem' }}>
-                  {isPositive ? '▼ REDUCED' : '▲ INCREASED'}
-                </div>
-              </div>
+              </FormulaTooltip>
 
-              <div className="whatif-card">
-                <div className="whatif-card-label"><Users size={14} /> Users Affected</div>
-                <div className="whatif-card-value">
-                  <AnimatedNumber value={result.users_affected} decimals={0} />
+              <FormulaTooltip formula="Total unique users belonging to the selected segment.">
+                <div className="whatif-card" style={{ cursor: 'help', height: '100%' }}>
+                  <div className="whatif-card-label"><Users size={14} /> Users Affected</div>
+                  <div className="whatif-card-value">
+                    <AnimatedNumber value={result.users_affected} decimals={0} />
+                  </div>
                 </div>
-              </div>
+              </FormulaTooltip>
             </div>
 
             {/* CAC vs LTV Dashboard */}
-            <div style={{ marginTop: '1rem', background: 'var(--bg-input)', padding: '1rem', borderRadius: '0.5rem', border: `1px solid ${isProfitable ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                <strong style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
-                  <DollarSign size={16} style={{ color: isProfitable ? '#10b981' : '#f43f5e' }}/> Retention ROI (CAC vs LTV)
-                </strong>
-                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: isProfitable ? '#10b981' : '#f43f5e', background: isProfitable ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)', padding: '0.2rem 0.5rem', borderRadius: '1rem' }}>
-                  {isProfitable ? 'HIGH ROI' : 'LOW ROI / NON-PROFITABLE'}
-                </span>
+            <FormulaTooltip formula="(LTV Saved - Campaign Cost). LTV Saved = Churn Δ × User Count × Segment LTV." color={isProfitable ? '#10b981' : '#f43f5e'}>
+              <div style={{ marginTop: '1rem', background: 'var(--bg-input)', padding: '1rem', borderRadius: '0.5rem', border: `1px solid ${isProfitable ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`, cursor: 'help' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                  <strong style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                    <DollarSign size={16} style={{ color: isProfitable ? '#10b981' : '#f43f5e' }}/> Retention ROI (CAC vs LTV)
+                  </strong>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 800, color: isProfitable ? '#10b981' : '#f43f5e', background: isProfitable ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)', padding: '0.2rem 0.5rem', borderRadius: '1rem' }}>
+                    {isProfitable ? 'HIGH ROI' : 'LOW ROI / NON-PROFITABLE'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  <span>Total Campaign Cost: <strong style={{ color: '#f43f5e' }}>₹{interventionCost.toLocaleString()}</strong></span>
+                  <span>Net LTV Saved: <strong style={{ color: '#10b981' }}>₹{predictedLTVGained.toLocaleString()}</strong></span>
+                </div>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: isProfitable ? '#059669' : '#e11d48' }}>
+                  {isProfitable 
+                    ? 'System Action: Profitable to retain. The value of users saved exceeds intervention cost.' 
+                    : 'System Action: Flagged. The cost of this intervention is higher than the expected LTV recovery.'}
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                <span>Total Campaign Cost: <strong style={{ color: '#f43f5e' }}>₹{interventionCost.toLocaleString()}</strong></span>
-                <span>Net LTV Saved: <strong style={{ color: '#10b981' }}>₹{predictedLTVGained.toLocaleString()}</strong></span>
-              </div>
-              <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: isProfitable ? '#059669' : '#e11d48' }}>
-                {isProfitable 
-                  ? 'System Action: Profitable to retain. The value of users saved exceeds intervention cost.' 
-                  : 'System Action: Flagged. The cost of this intervention is higher than the expected LTV recovery.'}
-              </div>
-            </div>
+            </FormulaTooltip>
 
             <div className="whatif-recommendation" style={{ marginTop: '1rem', position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>

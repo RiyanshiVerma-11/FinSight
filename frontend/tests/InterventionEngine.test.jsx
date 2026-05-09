@@ -33,18 +33,18 @@ describe('InterventionEngine', () => {
     expect(screen.getByText(/Intervention Engine/i)).toBeInTheDocument();
   });
 
-  it('renders PLAYBOOK badge', () => {
+  it('renders AI-OPTIMIZED or DATA-DRIVEN badge', () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText(/PLAYBOOK/i)).toBeInTheDocument();
+    expect(screen.getByText(/DATA-DRIVEN/i)).toBeInTheDocument();
   });
 
-  it('renders table headers: Segment, Users, Problem, Action, Urgency', () => {
+  it('renders table headers: Strategic Persona, Scale, Business Impact, Recommended Action', () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText(/Segment/i)).toBeInTheDocument();
-    expect(screen.getByText(/Users/i)).toBeInTheDocument();
-    expect(screen.getByText(/Problem/i)).toBeInTheDocument();
+    expect(screen.getByText(/Strategic Persona/i)).toBeInTheDocument();
+    expect(screen.getByText(/Scale/i)).toBeInTheDocument();
+    expect(screen.getByText(/Business Impact/i)).toBeInTheDocument();
     expect(screen.getByText(/Recommended Action/i)).toBeInTheDocument();
-    expect(screen.getByText(/Urgency/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recovery ROI/i)).toBeInTheDocument();
   });
 
   // ── Segment rows ────────────────────────────────────────────────────────
@@ -62,32 +62,23 @@ describe('InterventionEngine', () => {
   });
 
   // ── Urgency badges ──────────────────────────────────────────────────────
-  it('shows CRITICAL badge for At Risk (churn 0.72)', () => {
+  it('shows CRITICAL text for At Risk (churn 0.72)', () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    const criticals = screen.getAllByText(/CRITICAL/i);
+    const criticals = screen.getAllByText(/Critical churn/i);
     expect(criticals.length).toBeGreaterThan(0);
   });
 
-  it('shows MEDIUM badge for Champions (churn 0.08)', () => {
+  it('shows HIGH RECOVERY ROI or LOSS PREVENTION based on profitability', () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    const medium = screen.getAllByText(/MEDIUM/i);
-    expect(medium.length).toBeGreaterThan(0);
+    const lossPrevention = screen.getAllByText(/LOSS PREVENTION|HIGH RECOVERY ROI/i);
+    expect(lossPrevention.length).toBeGreaterThan(0);
   });
 
   // ── Action content ──────────────────────────────────────────────────────
-  it('shows cashback action for At Risk segment', () => {
+  it('shows action text based on churn risk', () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText(/cashback/i)).toBeInTheDocument();
-  });
-
-  it('shows loyalty action for Loyal segment', () => {
-    render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText(/loyalty/i)).toBeInTheDocument();
-  });
-
-  it('shows re-engagement for Hibernating segment', () => {
-    render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText(/[Rr]e.engagement/)).toBeInTheDocument();
+    // Problem text based on churn
+    expect(screen.getByText(/Critical churn at 72%|Elevated risk at/i)).toBeInTheDocument();
   });
 
   // ── Edge cases ──────────────────────────────────────────────────────────

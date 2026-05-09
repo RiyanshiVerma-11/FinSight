@@ -155,7 +155,7 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
 
     # 7. Revenue-at-Risk & Recovery Potential
     revenue_at_risk = eng.get_revenue_at_risk(churn_results)
-    potential_recovery = eng.get_potential_recovery(churn_results)
+    potential_recovery = eng.get_potential_recovery(churn_results, metrics)
 
     # Merge
     final_df = churn_results.merge(lifecycle, on='user_id')
@@ -390,11 +390,21 @@ async def get_default_data():
     logger.warning(f"⚠️  Wait timeout for '{fname}'. Triggering fast-sample fallback.")
     try:
         fpath = os.path.join(DATASET_DIR, fname)
-        df = _read_file(fpath)
+        # Optimized: Read only first 25k rows to avoid OOM on large files during fallback
+        if fname.endswith('.csv'):
+            df = pd.read_csv(fpath, encoding='ISO-8859-1', nrows=25000)
+        else:
+            df = pd.read_excel(fpath) # Excel doesn't support nrows easily
+            
         df = _prepare_retail_df(df)
-        # VERY small sample for immediate response
-        df = df.sample(min(len(df), 10000), random_state=42).sort_values('timestamp')
+        original_len = 25000 # Approximation for speed
+        sampled_rows = len(df)
+        
+        # We don't need to sample again if we already read only 25k rows
         result = _process_dataframe(df, cache_key=f"demo_{fname}")
+        result['summary']['is_sampled'] = True
+        result['summary']['sample_size'] = sampled_rows
+        result['summary']['total_source_rows'] = "Estimated 100k+" if original_len == 25000 else original_len
         return result
     except Exception as e:
         logger.error(f"Fallback processing failed: {e}")

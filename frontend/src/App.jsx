@@ -11,6 +11,23 @@ import {
   FlaskConical, ShoppingBag, CalendarRange, Brain,
   DollarSign, Zap, FileText, LayoutDashboard, Award, AlertTriangle
 } from 'lucide-react';
+
+const Info = (props) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width={props.size || 24} 
+    height={props.size || 24} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    {...props}
+  >
+    <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+  </svg>
+);
 import { motion } from 'framer-motion';
 import { Joyride, STATUS } from 'react-joyride';
 import html2canvas from 'html2canvas';
@@ -20,6 +37,7 @@ import WhatIfPanel from './components/WhatIfPanel';
 import LiveTicker from './components/LiveTicker';
 import ExecutiveDashboard from './components/ExecutiveDashboard';
 import InterventionEngine from './components/InterventionEngine';
+import FormulaTooltip from './components/FormulaTooltip';
 
 let API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 if (API_URL && !API_URL.startsWith('http')) {
@@ -39,14 +57,55 @@ const SEGMENT_COLORS = {
 const CHART_COLORS = ['#6366f1', '#a78bfa', '#c084fc', '#e879f9', '#f472b6', '#fb7185'];
 
 const formatCurrency = (val) => {
-  if (val === undefined || val === null) return '₹0';
-  const num = Number(val);
-  if (num >= 100000) {
-    return `₹${(num / 100000).toFixed(2)}L`;
-  } else if (num >= 1000) {
-    return `₹${(num / 1000).toFixed(1)}K`;
+  try {
+    if (val === undefined || val === null) return '₹0';
+    
+    let num;
+    if (typeof val === 'object' && val !== null) {
+      num = Number(val.value ?? val.total ?? val.amount ?? 0);
+    } else {
+      num = Number(val);
+    }
+
+    if (isNaN(num) || !isFinite(num)) return '₹0';
+    
+    if (num >= 10000000) { // Crore
+       return `₹${(num / 10000000).toFixed(2)}Cr`;
+    } else if (num >= 100000) { // Lakh
+      return `₹${(num / 100000).toFixed(2)}L`;
+    } else if (num >= 1000) { // Thousand
+      return `₹${(num / 1000).toFixed(1)}K`;
+    }
+    return `₹${Math.round(num).toLocaleString('en-IN')}`;
+  } catch (e) {
+    return '₹0';
   }
-  return `₹${Math.round(num).toLocaleString('en-IN')}`;
+};
+
+const segmentToPersona = (seg) => {
+  const personas = {
+    'Champions': 'Power Shopper',
+    'Loyalists': 'Brand Advocate',
+    'Promising': 'Early Adopter',
+    'At Risk': 'Slipping Fan',
+    'Hibernating': 'Lost Opportunity',
+    'Needs Attention': 'Drifting User',
+    'New': 'Onboarding'
+  };
+  return personas[seg] || seg;
+};
+
+const formatMetricPct = (val) => {
+  if (val === undefined || val === null) return '0%';
+  const num = Number(val);
+  return isNaN(num) ? '0%' : `${(num * 100).toFixed(1)}%`;
+};
+
+const getRiskThresholds = (s) => {
+  return {
+    high: s?.metrics?.optimal_threshold || 0.4,
+    critical: (s?.metrics?.optimal_threshold || 0.4) + 0.2
+  };
 };
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -66,7 +125,7 @@ const CustomTooltip = ({ active, payload, label }) => {
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: 2 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: e.color }} />
           <p style={{ color: '#fff', fontWeight: 700 }}>
-            {e.name}: {typeof e.value === 'number' && (e.name.toLowerCase().includes('revenue') || e.name.toLowerCase().includes('amount') || e.name.toLowerCase().includes('risk') && e.value > 100) ? formatCurrency(e.value) : e.value.toLocaleString()}
+            {e.name}: {typeof e.value === 'number' && (e.name?.toLowerCase().includes('revenue') || e.name?.toLowerCase().includes('amount') || e.name?.toLowerCase().includes('risk') && e.value > 100) ? formatCurrency(e.value) : (e.value?.toLocaleString() ?? '0')}
           </p>
         </div>
       ))}
@@ -81,14 +140,18 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-const StatCard = ({ icon: Icon, iconClass, cardClass, label, value, trend, trendClass, trendIcon: TrendIcon, delay = 0, className = "" }) => (
-  <motion.div className={`card stat-card ${cardClass} ${className}`}
-    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay, duration: 0.4 }}>
-    <div className={`stat-icon ${iconClass}`}><Icon size={22} /></div>
-    <div className="stat-label">{label}</div>
-    <div className="stat-value">{value}</div>
-    <div className={`stat-trend ${trendClass}`}><TrendIcon size={14} />{trend}</div>
-  </motion.div>
+const StatCard = ({ icon: Icon, iconClass, cardClass, label, value, trend, trendClass, trendIcon: TrendIcon, delay = 0, className = "", logic }) => (
+  <FormulaTooltip formula={logic} color={cardClass.includes('indigo') ? '#6366f1' : cardClass.includes('rose') ? '#f43f5e' : cardClass.includes('cyan') ? '#06b6d4' : '#f59e0b'}>
+    <motion.div className={`card stat-card ${cardClass} ${className}`}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay, duration: 0.4 }}
+      style={{ position: 'relative', cursor: logic ? 'help' : 'default', height: '100%' }}
+    >
+      <div className={`stat-icon ${iconClass}`}><Icon size={22} /></div>
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      <div className={`stat-trend ${trendClass}`}><TrendIcon size={14} />{trend}</div>
+    </motion.div>
+  </FormulaTooltip>
 );
 
 const Section = ({ children, span = 12, delay = 0, style = {}, className = "", initial = { opacity: 0 } }) => (
@@ -125,30 +188,6 @@ const getROIStatus = (u) => {
   return { status: 'At Risk / Non-Profitable', cost, color: '#f43f5e', bg: 'rgba(244,63,94,0.1)' };
 };
 
-const segmentToPersona = (name) => {
-  if (!name) return 'Unknown';
-  const PERSONA_MAP = {
-    'At Risk': 'The Fading Star',
-    'Loyalists': 'The Steady Pillar',
-    'Champions': 'The Loyal Giant',
-    'Promising': 'The Rising Star',
-    'Needs Attention': 'The Drifting Spark',
-    'Hibernating': 'The Lost Soul',
-  };
-  return PERSONA_MAP[name] || name;
-};
-
-const formatMetricPct = (value) => (
-  value === undefined || value === null ? 'N/A' : `${(value * 100).toFixed(1)}%`
-);
-
-const getRiskThresholds = (summary) => {
-  // Business Mandate: Stable < 20%, Warning 20-40%, Critical > 40%
-  return {
-    high: 0.2,
-    critical: 0.4,
-  };
-};
 
 function App() {
   const [data, setData] = useState(null);
@@ -492,20 +531,24 @@ function App() {
                   <StatCard icon={Users} iconClass="stat-icon--indigo" cardClass="stat-card--indigo"
                     label="Total Users" value={s?.total_users?.toLocaleString() || '0'}
                     trend={`${s?.metrics?.train_size || 0} train / ${s?.metrics?.test_size || 0} test`}
-                    trendClass="stat-trend--neutral" trendIcon={CheckCircle} delay={0} />
+                    trendClass="stat-trend--neutral" trendIcon={CheckCircle} delay={0}
+                    logic="Computed from: Count of unique User IDs in the current analytical session." />
 
                   <StatCard icon={ShieldAlert} iconClass="stat-icon--rose" cardClass="stat-card--rose"
                     label="Aggregated Risk" value={`${churnPct}%`}
-                    trend="Revenue-Weighted Risk" trendClass="stat-trend--neutral" trendIcon={DollarSign} delay={0.05} />
+                    trend="Revenue-Weighted Risk" trendClass="stat-trend--neutral" trendIcon={DollarSign} delay={0.05}
+                    logic="Computed from: Σ(Churn Prob × Monetary) / Σ(Total Monetary). A weighted measure of systemic risk." />
 
                   <StatCard icon={Target} iconClass="stat-icon--cyan" cardClass="stat-card--cyan"
                     label="Model Accuracy" value={formatMetricPct(s?.metrics?.accuracy)}
                     trend={`AUC: ${formatMetricPct(s?.metrics?.roc_auc)}`}
-                    trendClass="stat-trend--neutral" trendIcon={ShieldCheck} delay={0.1} />
+                    trendClass="stat-trend--neutral" trendIcon={ShieldCheck} delay={0.1}
+                    logic="Computed from: Out-of-sample Test Set Accuracy (Correct Predictions / Total Predictions)." />
 
                   <StatCard icon={DollarSign} iconClass="stat-icon--amber" cardClass="stat-card--amber"
                     label="Revenue at Risk" value={formatCurrency(rar?.total || 0)}
-                    trend={`${segChurn?.length || 0} segments`} trendClass="stat-trend--down" trendIcon={TrendingDown} delay={0.15} />
+                    trend={`${segChurn?.length || 0} segments`} trendClass="stat-trend--down" trendIcon={TrendingDown} delay={0.15}
+                    logic="Computed from: Σ(Daily Velocity × 90 Days × Churn Prob). Total projected exposure over the next quarter." />
                 </div>
               </div>
 
@@ -633,57 +676,73 @@ function App() {
                   <h2 style={{ margin: 0 }}>Behavioral Risk Interaction</h2>
                   <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '1rem' }}>SHAP Dependence</span>
                 </div>
-                <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '-0.75rem', marginBottom: '1rem', lineHeight: 1.5 }}>
-                  {s?.top_drivers?.length >= 2
-                    ? `${s.top_drivers[0].feature} × ${s.top_drivers[1].feature} Interaction: Analyzing how the top two behavioral signals correlate to predict systemic churn risk.`
-                    : "Feature Interaction: Analyzing how behavioral signals correlate to predict systemic churn risk."}
-                  <br />
-                  <strong style={{ color: '#475569' }}>Strategic Interpretation:</strong> Each point represents a user from a diversified sample. <strong style={{ color: '#f43f5e' }}>Red dots</strong> indicate critical risk clusters, revealing exactly which combinations of tenure and spending trigger churn.
-                </p>
-                <div className="chart-wrapper" style={{ padding: '0.5rem', height: 250 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis type="number" dataKey="amount" name="Monetary Value" tick={{ fontSize: 11 }} />
-                      <YAxis type="number" dataKey="tenure" name="Tenure (Days)" tick={{ fontSize: 11 }} />
-                      <ZAxis type="number" dataKey="churn" range={[40, 400]} name="Churn Risk" />
-                      <Tooltip cursor={{ strokeDasharray: '3 3' }}
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            return (
-                              <div style={{ background: '#fff', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '0.8rem' }}>
-                                <p><strong>Value:</strong> ${payload[0].value.toLocaleString()}</p>
-                                <p><strong>Tenure:</strong> {payload[1].value} days</p>
-                                <p><strong>Churn Risk:</strong> {(payload[2].value * 100).toFixed(1)}%</p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      {(() => {
-                        const users = data?.users || [];
-                        // Take a random/uniform sample of 100 users to keep the graph readable
-                        const step = Math.max(1, Math.floor(users.length / 100));
-                        const sampleUsers = users.filter((_, i) => i % step === 0).slice(0, 100);
+                {(() => {
+                  const top2 = (s?.top_drivers || []).slice(0, 2);
+                  const f1 = top2[0] || { feature: 'Spending Engagement', raw_feature: 'monetary' };
+                  const f2 = top2[1] || { feature: 'Customer Tenure', raw_feature: 'account_age_days' };
+                  const users = data?.users || [];
+                  const isSampled = users.length < (s?.total_users || 0);
 
-                        return (
-                          <Scatter name="Users" data={sampleUsers.map(u => ({
-                            user_id: u.user_id,
-                            amount: u.monetary || u.amount || 0,
-                            tenure: u.tenure_months ? u.tenure_months * 30 : (u.tenure || 0),
-                            churn: u.churn_probability || 0
-                          }))}>
-                            {sampleUsers.map((u, index) => {
-                              const churn = u.churn_probability || 0;
-                              return <Cell key={`cell-${index}`} fill={churn >= criticalThreshold ? '#f43f5e' : churn >= riskThreshold ? '#f59e0b' : '#10b981'} />;
-                            })}
-                          </Scatter>
-                        );
-                      })()}
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </div>
+                  return (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginTop: '-0.75rem', marginBottom: '1rem' }}>
+                        <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0, lineHeight: 1.5, flex: 1 }}>
+                          {f1.feature} × {f2.feature} Interaction: Analyzing how the top two behavioral signals correlate to predict systemic churn risk.
+                          <br />
+                          <strong style={{ color: '#475569' }}>Strategic Interpretation:</strong> Each point represents a user from a diversified sample. <strong style={{ color: '#f43f5e' }}>Red dots</strong> indicate critical risk clusters.
+                        </p>
+                        {isSampled && (
+                          <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)', whiteSpace: 'nowrap' }}>
+                            <Activity size={10} style={{ marginRight: '0.2rem' }} /> SAMPLED VIEW (150 users)
+                          </div>
+                        )}
+                      </div>
+                      <div className="chart-wrapper" style={{ padding: '0.5rem', height: 250 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                            <XAxis type="number" dataKey="x" name={f1.feature} tick={{ fontSize: 11 }} />
+                            <YAxis type="number" dataKey="y" name={f2.feature} tick={{ fontSize: 11 }} />
+                            <ZAxis type="number" dataKey="churn" range={[40, 400]} name="Churn Risk" />
+                            <Tooltip cursor={{ strokeDasharray: '3 3' }}
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  return (
+                                    <div style={{ background: '#fff', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '0.8rem' }}>
+                                      <p><strong>{f1.feature}:</strong> {typeof payload[0].value === 'number' ? payload[0].value.toLocaleString() : payload[0].value}</p>
+                                      <p><strong>{f2.feature}:</strong> {typeof payload[1].value === 'number' ? payload[1].value.toLocaleString() : payload[1].value}</p>
+                                      <p><strong>Churn Risk:</strong> {(payload[2].value * 100).toFixed(1)}%</p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            {(() => {
+                              const users = data?.users || [];
+                              const step = Math.max(1, Math.floor(users.length / 150));
+                              const sampleUsers = users.filter((_, i) => i % step === 0).slice(0, 150);
+
+                              return (
+                                <Scatter name="Users" data={sampleUsers.map(u => ({
+                                  user_id: u.user_id,
+                                  x: u[f1.raw_feature] ?? u[f1.raw_feature.replace('_raw', '')] ?? 0,
+                                  y: u[f2.raw_feature] ?? u[f2.raw_feature.replace('_raw', '')] ?? 0,
+                                  churn: u.churn_probability || 0
+                                }))}>
+                                  {sampleUsers.map((u, index) => {
+                                    const churn = u.churn_probability || 0;
+                                    return <Cell key={`cell-${index}`} fill={churn >= criticalThreshold ? '#f43f5e' : churn >= riskThreshold ? '#f59e0b' : '#10b981'} />;
+                                  })}
+                                </Scatter>
+                              );
+                            })()}
+                          </ScatterChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </>
+                  );
+                })()}
               </Section>
 
               {/* ── Top 3 Global Churn Drivers ── */}
@@ -731,9 +790,9 @@ function App() {
                           {(() => {
                             const isIncrease = d.direction === 'increases_churn';
                             if (isIncrease) {
-                              return <span><strong>Strategic Insight:</strong> Excessive <strong>{d.feature}</strong> is a high-risk anomaly. In this context, it typically signals transactional friction or platform fatigue.</span>;
+                              return <span><strong>Strategic Insight:</strong> Elevated levels of <strong>{d.feature}</strong> show a strong statistical correlation with churn. This typically indicates behavioral friction or a shift in user sentiment that requires immediate monitoring.</span>;
                             }
-                            return <span><strong>Strategic Insight:</strong> A decline in <strong>{d.feature}</strong> is a critical indicator of fading interest. We must incentivize users to restore this engagement level to its baseline.</span>;
+                            return <span><strong>Strategic Insight:</strong> A downward trend in <strong>{d.feature}</strong> is a critical early-warning signal. In our models, this decline often precedes a total lapse in engagement, suggesting a need for proactive re-activation.</span>;
                           })()}
                         </div>
                       </motion.div>
@@ -920,7 +979,7 @@ function App() {
               {/* ── Intervention Engine ── */}
               <div style={{ gridColumn: 'span 12' }}>
                 <Section span={12} delay={0} initial={false}>
-                  <InterventionEngine segments={s?.segments} segChurn={segChurn} />
+                  <InterventionEngine segments={s?.segments} segChurn={segChurn} metrics={s?.metrics} />
                 </Section>
               </div>
 
