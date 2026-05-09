@@ -22,7 +22,9 @@ const MOCK_RESULT = {
   simulated_churn: 0.54,
   churn_reduction_pct: -18.0,
   users_affected: 312,
+  revenue_saved: 840000,
   revenue_protected: 840000,
+  feature_importance: 0.24,
   recommendation: 'Increasing frequency by 20% could reduce churn significantly.',
 };
 
@@ -72,23 +74,23 @@ describe('WhatIfPanel', () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
     const campaignBtn = screen.getByRole('button', { name: /Campaigns/i });
     await userEvent.click(campaignBtn);
-    expect(screen.getByText(/₹100 Cashback/i)).toBeInTheDocument();
+    expect(screen.getByText(/₹200 Cashback/i)).toBeInTheDocument();
   });
 
   it('renders all 5 campaign cards in Campaign mode', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
     await userEvent.click(screen.getByRole('button', { name: /Campaigns/i }));
-    expect(screen.getByText(/₹100 Cashback/i)).toBeInTheDocument();
-    expect(screen.getByText(/Push Notification/i)).toBeInTheDocument();
-    expect(screen.getByText(/Plan Discount/i)).toBeInTheDocument();
-    expect(screen.getByText(/Loyalty Points/i)).toBeInTheDocument();
-    expect(screen.getByText(/Re-engagement Email/i)).toBeInTheDocument();
+    expect(screen.getByText(/₹200 Cashback/i)).toBeInTheDocument();
+    expect(screen.getByText(/Push & SMS/i)).toBeInTheDocument();
+    expect(screen.getByText(/Plan Upgrade/i)).toBeInTheDocument();
+    expect(screen.getByText(/Loyalty Program/i)).toBeInTheDocument();
+    expect(screen.getByText(/VIP Concierge/i)).toBeInTheDocument();
   });
 
   it('selecting a campaign card activates it', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
     await userEvent.click(screen.getByRole('button', { name: /Campaigns/i }));
-    const cashbackCard = screen.getByText(/₹100 Cashback/i).closest('button');
+    const cashbackCard = screen.getByText(/₹200 Cashback/i).closest('button');
     await userEvent.click(cashbackCard);
     expect(cashbackCard).toHaveClass('campaign-card--active');
   });
@@ -106,18 +108,18 @@ describe('WhatIfPanel', () => {
     await userEvent.click(runBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/You just saved/i)).toBeInTheDocument();
+      expect(screen.getByText(/Predicted Revenue Saved/i)).toBeInTheDocument();
     });
   });
 
-  it('shows Impact Summary section after simulation', async () => {
+  it('shows Prescriptive Insight section after simulation', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
     const select = screen.getByRole('combobox');
     await userEvent.selectOptions(select, 'At Risk');
     await userEvent.click(screen.getByRole('button', { name: /Run Simulation/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Impact Summary/i)).toBeInTheDocument();
+      expect(screen.getByText(/Prescriptive Insight/i)).toBeInTheDocument();
     });
   });
 
@@ -128,7 +130,7 @@ describe('WhatIfPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /Run Simulation/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Recommendation/i)).toBeInTheDocument();
+      expect(screen.getByText(/Increasing frequency by 20% could reduce churn significantly/i)).toBeInTheDocument();
     });
   });
 

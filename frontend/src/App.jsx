@@ -262,7 +262,7 @@ function App() {
   const handleDatasetChange = async (e) => {
     const f = e.target.value; if (!f) return;
     setSelectedDataset(f); setLoading(true);
-    try { setData((await axios.get(`${API_URL}/analyze-local?filename=${f}`)).data); }
+    try { setData((await axios.get(`${API_URL}/analyze-local?filename=${encodeURIComponent(f)}`)).data); }
     catch { alert("Error loading dataset."); }
     finally { setLoading(false); }
   };
@@ -440,6 +440,27 @@ function App() {
           <button className="btn-primary" onClick={() => fetchDemoData()}>
             <RefreshCw size={17} /> Retry Initialization
           </button>
+        </div>
+      )}
+
+      {data?.summary?.is_synthetic_demo && (
+        <div style={{
+          margin: '0 0 1rem 0',
+          padding: '0.85rem 1rem',
+          borderRadius: '0.75rem',
+          border: '1px solid rgba(245,158,11,0.35)',
+          background: 'rgba(245,158,11,0.08)',
+          color: '#92400e',
+          fontSize: '0.82rem',
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <AlertTriangle size={16} />
+          <span>
+            Running on fallback synthetic demo data. Upload/select a real dataset to view production metrics.
+          </span>
         </div>
       )}
 
@@ -683,6 +704,63 @@ function App() {
                   const users = data?.users || [];
                   const isSampled = users.length < (s?.total_users || 0);
 
+                  const toNum = (v) => {
+                    const n = Number(v);
+                    return Number.isFinite(n) ? n : null;
+                  };
+
+                  const inferFeatureKey = (driver) => {
+                    const userKeys = users.length ? Object.keys(users[0]) : [];
+                    const raw = driver?.raw_feature;
+
+                    const candidates = [];
+                    if (raw) {
+                      candidates.push(raw);
+                      if (raw.endsWith('_raw')) candidates.push(raw.replace('_raw', ''));
+                      else candidates.push(`${raw}_raw`);
+                    }
+
+                    const label = String(driver?.feature || '').toLowerCase();
+                    if (label.includes('frequency') || label.includes('order count')) {
+                      candidates.push('frequency', 'frequency_raw');
+                    } else if (label.includes('spending') || label.includes('wallet') || label.includes('monetary')) {
+                      candidates.push('monetary', 'amount', 'monetary_raw');
+                    } else if (label.includes('recency') || label.includes('delay')) {
+                      candidates.push('recency', 'recency_deviation');
+                    } else if (label.includes('tenure') || label.includes('account age')) {
+                      candidates.push('account_age_days', 'tenure');
+                    } else if (label.includes('velocity')) {
+                      candidates.push('monetary_velocity');
+                    }
+
+                    for (const key of candidates) {
+                      if (!key || !userKeys.includes(key)) continue;
+                      const vals = users.map(u => toNum(u[key])).filter(v => v !== null);
+                      const uniq = new Set(vals.map(v => v.toFixed(4))).size;
+                      if (uniq > 3) return key;
+                    }
+
+                    const numericKeys = userKeys.filter(k => {
+                      if (['churn_probability', 'revenue_at_risk', 'predicted_ltv', 'priority_score'].includes(k)) return false;
+                      const vals = users.map(u => toNum(u[k])).filter(v => v !== null);
+                      const uniq = new Set(vals.map(v => v.toFixed(4))).size;
+                      return uniq > 3;
+                    });
+
+                    return numericKeys[0] || raw || 'monetary';
+                  };
+
+                  const xKey = inferFeatureKey(f1);
+                  const yKey = inferFeatureKey(f2);
+                  const step = Math.max(1, Math.floor(users.length / 150));
+                  const sampleUsers = users.filter((_, i) => i % step === 0).slice(0, 150);
+                  const interactionPoints = sampleUsers.map(u => ({
+                    user_id: u.user_id,
+                    x: toNum(u[xKey]) ?? 0,
+                    y: toNum(u[yKey]) ?? 0,
+                    churn: toNum(u.churn_probability) ?? 0
+                  })).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+
                   return (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginTop: '-0.75rem', marginBottom: '1rem' }}>
@@ -718,27 +796,17 @@ function App() {
                                 return null;
                               }}
                             />
-                            {(() => {
-                              const users = data?.users || [];
-                              const step = Math.max(1, Math.floor(users.length / 150));
-                              const sampleUsers = users.filter((_, i) => i % step === 0).slice(0, 150);
-
-                              return (
-                                <Scatter name="Users" data={sampleUsers.map(u => ({
-                                  user_id: u.user_id,
-                                  x: u[f1.raw_feature] ?? u[f1.raw_feature.replace('_raw', '')] ?? 0,
-                                  y: u[f2.raw_feature] ?? u[f2.raw_feature.replace('_raw', '')] ?? 0,
-                                  churn: u.churn_probability || 0
-                                }))}>
-                                  {sampleUsers.map((u, index) => {
-                                    const churn = u.churn_probability || 0;
-                                    return <Cell key={`cell-${index}`} fill={churn >= criticalThreshold ? '#f43f5e' : churn >= riskThreshold ? '#f59e0b' : '#10b981'} />;
-                                  })}
-                                </Scatter>
-                              );
-                            })()}
+                            <Scatter name="Users" data={interactionPoints}>
+                              {interactionPoints.map((u, index) => {
+                                const churn = u.churn || 0;
+                                return <Cell key={`cell-${index}`} fill={churn >= criticalThreshold ? '#f43f5e' : churn >= riskThreshold ? '#f59e0b' : '#10b981'} />;
+                              })}
+                            </Scatter>
                           </ScatterChart>
                         </ResponsiveContainer>
+                      </div>
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>
+                        Feature mapping: X = <span style={{ color: '#334155' }}>{xKey}</span> · Y = <span style={{ color: '#334155' }}>{yKey}</span>
                       </div>
                     </>
                   );

@@ -248,13 +248,13 @@ export default function WhatIfPanel({ segments, segChurn, onSimulationResult }) 
               <FormulaTooltip formula="Absolute difference between Original and Simulated churn rates." color={isPositive ? '#10b981' : '#f43f5e'}>
                 <div className={`whatif-card whatif-card--highlight ${isPositive ? 'whatif-card--green' : 'whatif-card--red'}`} style={{ cursor: 'help', height: '100%' }}>
                   <div className="whatif-card-label">
-                    <TrendingDown size={14} /> Churn Reduction
+                    <TrendingDown size={14} /> Absolute Churn Drop
                   </div>
                   <div className="whatif-card-value" style={{ color: isPositive ? '#10b981' : '#f43f5e' }}>
-                    <AnimatedNumber value={Math.abs(churnImprovement)} suffix="%" decimals={1} />
+                    <AnimatedNumber value={Math.abs(result.absolute_reduction || churnImprovement)} suffix="%" decimals={1} />
                   </div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, color: isPositive ? '#10b981' : '#f43f5e', marginTop: '0.2rem' }}>
-                    {isPositive ? '▼ REDUCED' : '▲ INCREASED'}
+                  <div style={{ fontSize: '0.65rem', fontWeight: 800, color: isPositive ? '#10b981' : '#f43f5e', marginTop: '0.2rem', textTransform: 'uppercase' }}>
+                    {result.reduction_pct ? `${result.reduction_pct.toFixed(1)}% Relative Lift` : (isPositive ? '▼ Reduced' : '▲ Increased')}
                   </div>
                 </div>
               </FormulaTooltip>

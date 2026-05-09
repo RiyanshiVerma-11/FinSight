@@ -142,9 +142,13 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
   // ── Dynamic Priority Segment Logic ──
   const sortedSegments = [...segChurn].sort((a,b) => b.avg_churn - a.avg_churn);
   const topRiskSeg = sortedSegments[0];
-  const prioritySegmentName = s?.metrics?.onboarding_risk_users > (totalUsers * 0.15) 
-    ? "Onboarding" 
-    : (topRiskSeg?.segment || "At Risk");
+  const isOnboardingPriority = s?.metrics?.onboarding_risk_users > (totalUsers * 0.15);
+  const prioritySegmentName = isOnboardingPriority ? "Onboarding" : (topRiskSeg?.segment || "At Risk");
+  
+  // Use segment-specific risk count if available, else total
+  const priorityRiskCount = isOnboardingPriority 
+    ? (s?.metrics?.onboarding_risk_users || 0)
+    : (topRiskSeg?.high_risk_count || s?.metrics?.total_high_risk_users || 0);
 
   return (
     <div className="executive-view-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -187,6 +191,16 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 </span>
                 <span>•</span>
                 <span style={{ color: '#0f172a' }}>{totalUsers.toLocaleString()} High-Value Profiles Analyzed</span>
+                {s?.metrics?.roc_auc > 0.75 && (
+                  <span style={{ 
+                    fontSize: '0.65rem', fontWeight: 900, color: '#10b981', 
+                    background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', 
+                    borderRadius: '20px', border: '1px solid rgba(16,185,129,0.2)',
+                    display: 'flex', alignItems: 'center', gap: '0.3rem'
+                  }}>
+                    <ShieldCheck size={10} /> High Reliability Analysis
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -238,15 +252,16 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                   <span style={{ fontSize: '0.75rem', fontWeight: 900, color: '#10b981', background: '#ecfdf5', padding: '0.3rem 1rem', borderRadius: '30px', border: '1px solid #d1fae5' }}>AI-Engine: Calibrated</span>
                 </div>
                 <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.75rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.04em' }}>
-                  The Situation: {churnPct}% Churn Exposure Detected
+                  The Situation: {churnPct}% Overall Churn Exposure Detected
                 </h3>
-                <p style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.8, color: '#334155', fontWeight: 600 }}>
-                  Our models have identified a <strong style={{ color: '#e11d48' }}>critical revenue leak</strong>. 
-                  Currently, <strong style={{ color: '#e11d48' }}>{formatCurrency(revAtRisk)}</strong> is at high risk of churn, primarily driven by 
-                  <span style={{ color: '#4f46e5', fontWeight: 800 }}> {s?.top_drivers?.[0]?.feature || 'Behavioral Volatility'}</span>. 
-                  However, this is not just a loss—it's an opportunity. By deploying our recommended <strong>Strategic Playbook</strong>, 
-                  we can effectively <strong>recover {formatCurrency(potentialSaved)}</strong> through targeted AI-driven interventions. 
-                  The immediate command priority is the <strong style={{ color: '#0891b2' }}>'{prioritySegmentName}'</strong> segment, where <strong style={{ color: '#e11d48' }}>{s?.metrics?.total_high_risk_users || 0} users</strong> are at critical risk.
+                <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: 1.6, fontWeight: 500 }}>
+                  Our models have identified a total probabilistic <strong style={{ color: '#0f172a' }}>Revenue Exposure of {formatCurrency(revAtRisk)}</strong>. 
+                  {s?.potential_recovery?.is_adaptive 
+                    ? `While absolute churn is low, we have identified a high-potential recovery of ${formatCurrency(potentialSaved)} by targeting the top-quartile 'Warning' cohort.`
+                    : `Currently, users with critical risk profiles contribute to this exposure, primarily driven by ${s?.top_drivers?.[0]?.feature || 'Behavioral Volatility'}.`
+                  } 
+                  By deploying our recommended <strong>Strategic Playbook</strong>, we can protect and grow this revenue through targeted AI-driven interventions. 
+                  The immediate command priority is the <strong style={{ color: '#0891b2' }}>'{prioritySegmentName}'</strong> segment, where <strong style={{ color: '#e11d48' }}>{priorityRiskCount} users</strong> are at critical risk.
                 </p>
                 <div style={{ marginTop: '2rem', display: 'flex', gap: '3rem', flexWrap: 'wrap' }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', fontWeight: 800 }}>
@@ -427,25 +442,45 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                       <TrendingDown size={16} color="#f43f5e" />
                       Avg. Churn Probability (Per Segment)
                    </div>
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-                      {segChurn.slice(0, 4).map((seg, i) => (
-                         <div key={i}>
-                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.4rem' }}>
-                                <span>{seg.segment}</span>
-                                <span style={{ color: seg.avg_churn > 0.4 ? '#f43f5e' : seg.avg_churn > 0.2 ? '#f59e0b' : '#10b981' }}>
-                                   {seg.avg_churn > 0.4 ? 'CRITICAL' : seg.avg_churn > 0.2 ? 'WARNING' : 'STABLE'} ({(seg.avg_churn * 100).toFixed(1)}%)
-                                </span>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                       {segChurn.slice(0, 5).map((seg, i) => (
+                          <div key={i} style={{ borderBottom: i < 4 ? '1px solid rgba(0,0,0,0.02)' : 'none', paddingBottom: i < 4 ? '0.75rem' : 0 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 800, marginBottom: '0.25rem' }}>
+                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ color: '#0f172a' }}>{seg.segment}</span>
+                                    <span style={{ 
+                                       fontSize: '0.65rem', 
+                                       fontWeight: 900, 
+                                       padding: '0.1rem 0.5rem', 
+                                       borderRadius: '20px',
+                                       background: seg.status === 'CRITICAL' ? 'rgba(244,63,94,0.1)' : seg.status === 'WARNING' ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
+                                       color: seg.status === 'CRITICAL' ? '#f43f5e' : seg.status === 'WARNING' ? '#f59e0b' : '#10b981'
+                                    }}>
+                                       {seg.status} ({(seg.avg_churn * 100).toFixed(1)}%)
+                                    </span>
+                                 </div>
+                              </div>
+                              <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600, marginBottom: '0.6rem', lineHeight: 1.4 }}>
+                                 {seg.definition || {
+                                    'Champions': 'Best customers: High spenders who buy frequently and recently.',
+                                    'Loyalists': 'Reliable regulars: Consistent purchase history with high engagement.',
+                                    'At Risk': 'High-value but fading: Historically big spenders who haven\'t returned recently.',
+                                    'Hibernating': 'Lost users: Low frequency and hasn\'t interacted in a long time.',
+                                    'Promising': 'Emerging stars: Recent joiners with high initial spending potential.',
+                                    'Needs Attention': 'Struggling users: Average value but showing signs of declining activity.',
+                                    'New': 'Fresh leads: Just joined the platform; habits not yet formed.'
+                                 }[seg.segment] || 'Behavioral segment based on RFM scoring.'}
+                              </div>
+                             <div style={{ height: 6, background: 'rgba(0,0,0,0.03)', borderRadius: 10, overflow: 'hidden' }}>
+                                <motion.div 
+                                   initial={{ width: 0 }}
+                                   animate={{ width: `${seg.avg_churn * 100}%` }}
+                                   style={{ height: '100%', background: SEGMENT_COLORS[seg.segment] || '#6366f1', borderRadius: 10 }} 
+                                />
                              </div>
-                            <div style={{ height: 6, background: 'rgba(0,0,0,0.05)', borderRadius: 10, overflow: 'hidden' }}>
-                               <motion.div 
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${seg.avg_churn * 100}%` }}
-                                  style={{ height: '100%', background: SEGMENT_COLORS[seg.segment], borderRadius: 10 }} 
-                               />
-                            </div>
-                         </div>
-                      ))}
-                   </div>
+                          </div>
+                       ))}
+                    </div>
                  </div>
               </div>
              {/* ── Lifecycle Stage Distribution ── */}

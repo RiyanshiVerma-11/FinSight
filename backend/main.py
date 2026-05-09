@@ -45,9 +45,9 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     """Normalise various retail formats into the standard internal schema."""
     # 1. Flexible Column Mapping
     column_variants = {
-        'user_id': ['Customer ID', 'CustomerID', 'Customer_ID', 'User ID', 'user', 'id', 'user_id'],
-        'timestamp': ['InvoiceDate', 'Date', 'timestamp', 'time', 'Order Date', 'date', 'Invoice Date'],
-        'amount': ['Price', 'Total', 'Amount', 'revenue', 'sum', 'amount', 'Total Price', 'TotalPrice'],
+        'user_id': ['Customer ID', 'CustomerID', 'Customer_ID', 'User ID', 'user', 'id', 'user_id', 'customer_id', 'payer_user_id', 'UID', 'Account'],
+        'timestamp': ['InvoiceDate', 'Date', 'timestamp', 'time', 'Order Date', 'date', 'Invoice Date', 'date_of_credit', 'ts', 'txn_date', 'CreatedAt'],
+        'amount': ['Price', 'Total', 'Amount', 'revenue', 'sum', 'amount', 'Total Price', 'TotalPrice', 'gross_amount_inr', 'amount_inr', 'TransactionAmount'],
         'unit_price': ['Price', 'UnitPrice', 'Unit Price', 'price', 'unit_price'],
         'quantity': ['Quantity', 'Qty', 'quantity', 'Quantity']
     }
@@ -57,6 +57,7 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     found_mapping = {}
     
     for target, variants in column_variants.items():
+        if target in found_mapping.values(): continue
         for v in variants:
             v_norm = v.lower().replace(' ', '').replace('_', '')
             if v_norm in current_cols:
@@ -66,51 +67,79 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     if found_mapping:
         df = df.rename(columns=found_mapping)
 
-    # 1.5 Column Mapping for Bank Churn / Summary datasets
-    summary_mapping = {
-        'credit_score': 'credit_score',
-        'balance': 'monetary',
-        'products_number': 'frequency',
-        'tenure': 'tenure_months',
-        'estimated_salary': 'monetary_velocity',
-        'active_member': 'is_active',
-        'churn': 'target_churn'
+    # ── Universal Fuzzy Mapping (Enterprise Grade) ──
+    mapping_dictionary = {
+        'user_id': ['userid', 'customerid', 'clientid', 'id', 'user', 'uid', 'account_number', 'member_id', 'customer_id', 'payer_user_id'],
+        'monetary': ['balance', 'amount', 'total_spend', 'revenue', 'monetary', 'value', 'transaction_value', 'spend', 'wallet_balance', 'gross_amount_inr', 'amount_inr'],
+        'frequency': ['frequency', 'orders', 'numofproducts', 'products_number', 'transaction_count', 'purchase_count', 'order_count', 'txn_count'],
+        'tenure_months': ['tenure', 'account_age', 'membership_duration', 'months_active', 'customer_since'],
+        'target_churn': ['exited', 'churn', 'churned', 'is_churn', 'left', 'attrition', 'churn_flag', 'target_churn'],
+        'is_active': ['isactivemember', 'active', 'is_active', 'active_member', 'engagement_flag'],
+        'credit_score': ['creditscore', 'credit_rating', 'score', 'credit_worthiness'],
+        'monetary_velocity': ['estimated_salary', 'income', 'daily_spend', 'velocity']
     }
-    
-    for v, target in summary_mapping.items():
-        v_norm = v.lower().replace(' ', '').replace('_', '')
-        if v_norm in current_cols:
-            df = df.rename(columns={current_cols[v_norm]: target})
-            # Also map to standard columns if missing
-            if target == 'monetary' and 'amount' not in df.columns:
-                df['amount'] = df[target]
 
-    # Handle missing timestamps for summary data (create dummy based on tenure)
-    if 'timestamp' not in df.columns and 'tenure_months' in df.columns:
-        # Create dummy timestamps so RFM pipeline doesn't crash
-        now = pd.Timestamp.now()
-        df['timestamp'] = now - pd.to_timedelta(df['tenure_months'].fillna(0) * 30, unit='D')
-        if 'amount' not in df.columns:
-            df['amount'] = df.get('monetary', 0)
+    for target, variations in mapping_dictionary.items():
+        if target in found_mapping.values(): continue 
+        for var in variations:
+            v_norm = var.lower().replace(' ', '').replace('_', '')
+            if v_norm in current_cols:
+                found_mapping[current_cols[v_norm]] = target
+                break
+    
+    if found_mapping:
+        df = df.rename(columns=found_mapping)
+        if 'monetary' in df.columns and 'amount' not in df.columns:
+            df['amount'] = df['monetary']
+        if 'user_id' in df.columns and 'customer_id' not in df.columns:
+            df['customer_id'] = df['user_id']
+
+    # ── Target Churn Normalization ──
+    if 'target_churn' in df.columns:
+        # Convert strings/bools to 0/1
+        if df['target_churn'].dtype == object or df['target_churn'].dtype == bool:
+            # Map common positive labels to 1
+            pos_labels = ['yes', 'true', '1', 'exited', 'churned', 'churn', 'left', 'attrition']
+            df['target_churn'] = df['target_churn'].astype(str).str.lower().isin(pos_labels).astype(int)
+        else:
+            df['target_churn'] = pd.to_numeric(df['target_churn'], errors='coerce').fillna(0).astype(int)
 
     # 2. Description column for Product Mix
-    desc_cols = ['Description', 'description', 'Product', 'product', 'ProductDescription']
+    desc_cols = ['Description', 'description', 'Product', 'product', 'ProductDescription', 'payee_name', 'merchant', 'receiver_name']
     for c in desc_cols:
         if c in df.columns and c != 'description':
             df = df.rename(columns={c: 'description'})
             break
 
     # 3. Handle required columns
+    df = df.loc[:, ~df.columns.duplicated()]
+
     if 'user_id' in df.columns:
-        # Convert user_id to string and remove nulls
-        df['user_id'] = pd.to_numeric(df['user_id'], errors='coerce').fillna(0).astype(int).astype(str)
-        df = df[df['user_id'] != '0']
+        # PRODUCTION FIX: Handle alphanumeric user_ids (common in UPI/Fintech)
+        # We only try numeric conversion if possible, otherwise keep as string.
+        df['user_id'] = df['user_id'].astype(str).str.strip()
+        df = df[df['user_id'].str.len() > 0]
+        df = df[~df['user_id'].isin(['0', 'nan', 'None', 'null'])]
 
     if 'timestamp' in df.columns:
-        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        try:
+            # Try parsing with format inference first
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+            
+            # Fallback for numeric timestamps
+            if df['timestamp'].isna().mean() > 0.5:
+                numeric_ts = pd.to_numeric(df['timestamp'], errors='coerce')
+                if not numeric_ts.isna().all():
+                    max_val = numeric_ts.max()
+                    unit = 'ms' if max_val > 1e11 else 's'
+                    df['timestamp'] = pd.to_datetime(numeric_ts, unit=unit, errors='coerce')
+        except Exception as e:
+            logger.warning(f"Datetime conversion fallback: {e}")
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+
         df = df.dropna(subset=['timestamp'])
 
-    # 4. Calculate amount if missing but price/qty exist
+    # 4. Amount normalization
     if 'amount' not in df.columns and 'unit_price' in df.columns and 'quantity' in df.columns:
         df['unit_price'] = pd.to_numeric(df['unit_price'], errors='coerce').fillna(0)
         df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
@@ -118,13 +147,29 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     elif 'amount' in df.columns:
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(0)
 
-    # 5. Final Cleanup
+    # For Summary Data (Kaggle-style)
+    if 'timestamp' not in df.columns and 'tenure_months' in df.columns:
+        now = pd.Timestamp.now()
+        raw_tenure = df['tenure_months'].fillna(0)
+        if raw_tenure.max() <= 25: actual_months = raw_tenure * 12
+        else: actual_months = raw_tenure
+        stable_tenure = actual_months.clip(lower=6)
+        df['timestamp'] = now - pd.to_timedelta(stable_tenure * 30, unit='D')
+        df['tenure_months'] = actual_months
+        if 'amount' not in df.columns:
+            df['amount'] = df.get('monetary', 0)
+
+    # Drop cancellations and retain only positive transactions
+    if 'Invoice' in df.columns:
+        df = df[~df['Invoice'].astype(str).str.startswith('C', na=False)]
+    if 'amount' in df.columns:
+        df = df[df['amount'] > 0]
+
+    # Final Cleanup
     required = ['user_id', 'timestamp', 'amount']
     df = df.dropna(subset=[c for c in required if c in df.columns])
     
     return df
-
-
 def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     """Full pipeline: RFM → Churn → Lifecycle → Product Mix → Cohort → Revenue → JSON."""
     eng = AnalyticsEngine()
@@ -158,7 +203,9 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     potential_recovery = eng.get_potential_recovery(churn_results, metrics)
 
     # Merge
-    final_df = churn_results.merge(lifecycle, on='user_id')
+    final_df = churn_results.merge(lifecycle, on='user_id', how='left')
+    # Force de-duplication of any colliding columns (segment_x/y etc)
+    final_df = final_df.loc[:, ~final_df.columns.duplicated()]
 
     # 8. LLM / Rule-based hypotheses
     hypotheses = eng.generate_hypotheses(drivers, final_df)
@@ -170,6 +217,15 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         logger.error(f"Forecast computation error: {e}")
         forecast_data = []
 
+    # Ensure 'segment' exists and is a single column Series
+    if 'segment' in final_df.columns:
+        segment_series = final_df['segment']
+        if isinstance(segment_series, pd.DataFrame):
+            segment_series = segment_series.iloc[:, 0]
+        segments_dict = segment_series.value_counts().to_dict()
+    else:
+        segments_dict = {}
+
     # 10. Model Info (Dynamic)
     best_model = metrics.get('primary_model', 'Random Forest')
 
@@ -177,7 +233,7 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         "total_users": int(final_df['user_id'].nunique()),
         "avg_churn_risk": float((final_df['churn_probability'] * final_df['monetary']).sum() / max(final_df['monetary'].sum(), 1)),
         "data_health": eng._calculate_data_health(df),
-        "segments": final_df['segment'].value_counts().to_dict(),
+        "segments": segments_dict,
         "lifecycle_stages": final_df['lifecycle'].value_counts().to_dict(),
         "top_drivers": drivers,
         "hypotheses": hypotheses,
@@ -214,6 +270,32 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     _engine_cache[cache_key] = {'engine': eng, 'rfm_df': churn_results, 'shap_data': shap_data}
 
     return {"summary": summary, "users": user_data}
+
+
+def _build_synthetic_demo_df(n_users: int = 500, seed: int = 42) -> pd.DataFrame:
+    """
+    Build a deterministic synthetic retail-like dataset.
+    Used only as a resilient fallback when no local dataset exists.
+    """
+    rng = np.random.default_rng(seed)
+    start_date = pd.Timestamp("2024-01-01")
+    rows = []
+
+    for uid in range(1, n_users + 1):
+        tx_count = int(rng.integers(3, 22))
+        for _ in range(tx_count):
+            days_offset = int(rng.integers(0, 480))
+            amount = float(max(25.0, rng.normal(1200.0, 650.0)))
+            rows.append({
+                "user_id": str(uid),
+                "timestamp": (start_date + pd.Timedelta(days=days_offset)).strftime("%Y-%m-%d"),
+                "amount": round(amount, 2),
+                "description": rng.choice(["Wallet Top-up", "Bill Pay", "Investment", "Insurance", "Premium Plan"])
+            })
+
+    df = pd.DataFrame(rows)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    return df.dropna(subset=["timestamp"])
 
 
 # ──────────────────────────────────────
@@ -350,6 +432,14 @@ async def _analyze_all_live():
         df = _prepare_retail_df(df)
         all_dfs.append(df)
     combined = pd.concat(all_dfs, ignore_index=True)
+    dedupe_candidates = ['user_id', 'timestamp', 'amount']
+    if 'Invoice' in combined.columns:
+        dedupe_candidates.insert(0, 'Invoice')
+    if 'StockCode' in combined.columns:
+        dedupe_candidates.append('StockCode')
+    existing_keys = [c for c in dedupe_candidates if c in combined.columns]
+    if existing_keys:
+        combined = combined.drop_duplicates(subset=existing_keys)
     result = _process_dataframe(combined, cache_key="all")
     _results_cache["all"] = result
     return result
@@ -368,7 +458,16 @@ async def get_default_data():
     # 2. If nothing cached, check if anything is on disk
     files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
     if not files:
-        raise HTTPException(status_code=404, detail="No datasets available. Please upload a file.")
+        logger.warning("⚠️ No datasets found on disk. Serving deterministic synthetic demo dataset.")
+        synthetic_key = "synthetic_demo"
+        if synthetic_key in _results_cache:
+            return _results_cache[synthetic_key]
+        demo_df = _build_synthetic_demo_df()
+        result = _process_dataframe(demo_df, cache_key=synthetic_key)
+        result["summary"]["is_synthetic_demo"] = True
+        result["summary"]["source_note"] = "Generated fallback dataset (no local dataset files found)."
+        _results_cache[synthetic_key] = result
+        return result
 
     fname = files[0]
     

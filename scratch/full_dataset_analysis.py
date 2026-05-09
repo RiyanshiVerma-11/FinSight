@@ -1,6 +1,8 @@
 
 import sys
 import os
+import time
+import json
 import pandas as pd
 import numpy as np
 import logging
@@ -57,6 +59,7 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def analyze_dataset(file_path):
     logger.info(f"Analyzing {file_path}...")
+    t0 = time.perf_counter()
     df = pd.read_csv(file_path, encoding='ISO-8859-1')
     df = _prepare_retail_df(df)
     
@@ -73,8 +76,10 @@ def analyze_dataset(file_path):
     critical_users = churn_results[churn_results['churn_probability'] >= 0.8].sort_values('revenue_at_risk', ascending=False)
     risk_users = churn_results[(churn_results['churn_probability'] >= optimal_threshold) & (churn_results['churn_probability'] < 0.8)].sort_values('revenue_at_risk', ascending=False)
     
+    elapsed = round(time.perf_counter() - t0, 2)
     return {
         "filename": os.path.basename(file_path),
+        "elapsed_seconds": elapsed,
         "total_users": len(churn_results),
         "revenue_at_risk": rev_at_risk['total'],
         "potential_recovery": recovery,
@@ -91,6 +96,7 @@ if __name__ == "__main__":
     files = ["Year 2009-2010.csv", "Year 2010-2011.csv"]
     
     results = []
+    bench_started = time.perf_counter()
     for f in files:
         path = os.path.join(dataset_dir, f)
         if os.path.exists(path):
@@ -106,12 +112,15 @@ if __name__ == "__main__":
             all_dfs.append(_prepare_retail_df(df))
     
     combined_df = pd.concat(all_dfs, ignore_index=True)
+    combined_df = combined_df.drop_duplicates(subset=[c for c in ['user_id', 'timestamp', 'amount'] if c in combined_df.columns])
+    combined_started = time.perf_counter()
     eng = AnalyticsEngine()
     rfm_results, silhouette = eng.calculate_rfm(combined_df)
     churn_results, drivers, metrics, shap_data = eng.predict_churn(combined_df, rfm_results)
     
     combined_results = {
         "filename": "Combined (2009-2011)",
+        "elapsed_seconds": round(time.perf_counter() - combined_started, 2),
         "total_users": len(churn_results),
         "revenue_at_risk": eng.get_revenue_at_risk(churn_results)['total'],
         "potential_recovery": eng.get_potential_recovery(churn_results, metrics),
@@ -121,9 +130,56 @@ if __name__ == "__main__":
         "segments": churn_results['segment'].value_counts().to_dict()
     }
     
-    # Output to a file for the model to read
-    import json
-    with open("scratch/analysis_output.json", "w") as f:
-        json.dump({"individual": results, "combined": combined_results}, f, indent=4)
-    
-    print("Analysis complete. Results saved to scratch/analysis_output.json")
+    quality_gates = {
+        "roc_auc_min": 0.65,
+        "accuracy_min": 0.60,
+    }
+
+    def pass_fail(m):
+        return {
+            "roc_auc_pass": (m.get("roc_auc", 0) >= quality_gates["roc_auc_min"]),
+            "accuracy_pass": (m.get("accuracy", 0) >= quality_gates["accuracy_min"]),
+        }
+
+    payload = {
+        "generated_at": datetime.now().isoformat(),
+        "elapsed_total_seconds": round(time.perf_counter() - bench_started, 2),
+        "quality_gates": quality_gates,
+        "individual": [{**r, "gate_result": pass_fail(r.get("metrics", {}))} for r in results],
+        "combined": {**combined_results, "gate_result": pass_fail(combined_results.get("metrics", {}))}
+    }
+
+    with open("scratch/analysis_output.json", "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+    summary_lines = [
+        "# Full Dataset Benchmark",
+        "",
+        f"- Generated: {payload['generated_at']}",
+        f"- Total runtime: {payload['elapsed_total_seconds']}s",
+        f"- Quality gates: ROC-AUC >= {quality_gates['roc_auc_min']}, Accuracy >= {quality_gates['accuracy_min']}",
+        "",
+        "## Per Dataset",
+    ]
+    for row in payload["individual"]:
+        summary_lines.append(
+            f"- {row['filename']}: users={row['total_users']}, auc={row['metrics'].get('roc_auc', 0):.4f}, "
+            f"acc={row['metrics'].get('accuracy', 0):.4f}, elapsed={row['elapsed_seconds']}s, "
+            f"gate={row['gate_result']}"
+        )
+
+    c = payload["combined"]
+    summary_lines.extend([
+        "",
+        "## Combined",
+        f"- users={c['total_users']}, auc={c['metrics'].get('roc_auc', 0):.4f}, acc={c['metrics'].get('accuracy', 0):.4f}, "
+        f"elapsed={c['elapsed_seconds']}s, gate={c['gate_result']}",
+        ""
+    ])
+
+    with open("scratch/full_dataset_benchmark.md", "w", encoding="utf-8") as f:
+        f.write("\n".join(summary_lines))
+
+    print("Benchmark complete. Outputs:")
+    print("- scratch/analysis_output.json")
+    print("- scratch/full_dataset_benchmark.md")
