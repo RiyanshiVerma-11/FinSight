@@ -295,7 +295,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
               id: 'risk',
               icon: AlertTriangle, label: 'Risk Intensity', value: `${churnPct}%`, 
               sub: 'Churn Probability', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',
-              desc: 'Likelihood of customers leaving in 30 days.',
+              desc: 'Likelihood of customers leaving in 90 days.',
               logic: "Computed from: Σ(User Churn Prob × User Monetary) / Σ(Total Monetary). A revenue-weighted average of churn risk across all segments."
             },
             { 
@@ -386,9 +386,8 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                           <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} dy={10} />
                           <YAxis hide domain={[0, 'auto']} />
                           <Tooltip content={<CustomTooltip />} />
-                          <Area type="monotone" dataKey="baseline" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" fill="transparent" name="No Action Churn" />
-                          <Area type="monotone" dataKey="risk" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorRisk)" name="Baseline Risk" />
-                          <Area type="monotone" dataKey="saved" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSaved)" name="Optimized Risk" />
+                          <Area type="monotone" dataKey="baseline" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorRisk)" name="No Action Risk" />
+                          <Area type="monotone" dataKey="risk" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSaved)" name="AI Optimized Risk" />
                        </AreaChart>
                    </ResponsiveContainer>
                 </div>

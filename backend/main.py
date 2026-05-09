@@ -147,22 +147,54 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     elif 'amount' in df.columns:
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(0)
 
-    # For Summary Data (Kaggle-style)
-    if 'timestamp' not in df.columns and 'tenure_months' in df.columns:
+    # For Summary Data (Kaggle-style: Churn_Modelling, Bank Churn, etc.)
+    # These datasets have ONE ROW PER USER with aggregate fields.
+    # We synthesize realistic transaction histories from the summary.
+    _is_summary_data = 'timestamp' not in df.columns and 'tenure_months' in df.columns
+    if _is_summary_data:
         now = pd.Timestamp.now()
-        raw_tenure = df['tenure_months'].fillna(0)
-        if raw_tenure.max() <= 25: actual_months = raw_tenure * 12
-        else: actual_months = raw_tenure
-        stable_tenure = actual_months.clip(lower=6)
-        df['timestamp'] = now - pd.to_timedelta(stable_tenure * 30, unit='D')
+        raw_tenure = pd.to_numeric(df['tenure_months'], errors='coerce').fillna(1)
+        # Tenure normalization: values 0-25 are likely years, else months
+        if raw_tenure.max() <= 25:
+            actual_months = (raw_tenure * 12).clip(lower=6)
+        else:
+            actual_months = raw_tenure.clip(lower=6)
         df['tenure_months'] = actual_months
+
+        # Synthesize amount: Use Balance if available, fallback to Salary/12
         if 'amount' not in df.columns:
-            df['amount'] = df.get('monetary', 0)
+            balance = pd.to_numeric(df.get('monetary', pd.Series(dtype=float)), errors='coerce').fillna(0)
+            salary = pd.to_numeric(df.get('monetary_velocity', pd.Series(dtype=float)), errors='coerce').fillna(0)
+            # For users with Balance=0, use monthly salary as proxy
+            df['amount'] = balance.where(balance > 0, salary / 12).clip(lower=100)
+
+        # Generate N synthetic transactions per user (N = NumOfProducts or frequency)
+        freq_col = df.get('frequency', pd.Series([1]*len(df), index=df.index))
+        freq_vals = pd.to_numeric(freq_col, errors='coerce').fillna(1).clip(lower=1, upper=10).astype(int)
+        
+        expanded_rows = []
+        for idx, row in df.iterrows():
+            n_txns = int(freq_vals.get(idx, 1))
+            tenure_days = max(int(actual_months.get(idx, 6) * 30), 30)
+            for t in range(n_txns):
+                new_row = row.copy()
+                # Spread transactions evenly across tenure
+                offset = int(tenure_days * (t + 1) / (n_txns + 1))
+                new_row['timestamp'] = now - pd.Timedelta(days=offset)
+                new_row['amount'] = float(row['amount']) / max(n_txns, 1)
+                expanded_rows.append(new_row)
+        df = pd.DataFrame(expanded_rows)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(100)
+        df['_is_summary'] = True
+        logger.info(f"📊 Summary data expanded: {len(expanded_rows)} synthetic transactions created")
+
 
     # Drop cancellations and retain only positive transactions
     if 'Invoice' in df.columns:
         df = df[~df['Invoice'].astype(str).str.startswith('C', na=False)]
-    if 'amount' in df.columns:
+    # Only filter amount>0 for TRANSACTIONAL data, not summary data
+    if 'amount' in df.columns and not _is_summary_data:
         df = df[df['amount'] > 0]
 
     # Final Cleanup
