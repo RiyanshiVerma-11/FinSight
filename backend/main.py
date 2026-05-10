@@ -33,7 +33,7 @@ DATASET_DIR = os.path.join(BASE_DIR, "datasets")
 # ── Configuration Constants ──
 # Render/Cloud has strict 512MB RAM limits, local machine usually has more.
 IS_CLOUD = os.environ.get('RENDER') is not None or os.environ.get('IS_CLOUD') == '1'
-MAX_ROWS = 65000 if IS_CLOUD else 1_000_000 
+MAX_ROWS = 250000 if IS_CLOUD else 1_000_000 
 MIN_USERS_TO_KEEP = 100
 
 if IS_CLOUD:
@@ -50,9 +50,10 @@ def _read_file(path: str) -> pd.DataFrame:
         # PRODUCTION FIX: Use robust multi-encoding detection for local files 
         # to match the upload logic and handle BOM/special characters consistently.
         
-        # MEMORY GUARD: On cloud (Render/Heroku), read only first 100k rows
-        # to prevent OOM before downsampling can occur.
-        nrows = 100000 if IS_CLOUD else None
+        # MEMORY GUARD: On cloud (Render/Heroku), read only first 200k rows
+        # to prevent OOM before downsampling can occur. This accommodates 
+        # larger datasets while keeping memory usage defensible.
+        nrows = 200000 if IS_CLOUD else None
         
         for enc in ['utf-8-sig', 'utf-8', 'ISO-8859-1']:
             try:
@@ -820,6 +821,8 @@ async def get_default_data():
     with _cache_lock:
         ready_keys = [k for k, v in _processing_status.items() if v == "ready" and k in _results_cache]
         if ready_keys:
+            # SORTING: Prioritize upi_transactions.csv if it's ready
+            ready_keys.sort(key=lambda x: 0 if 'upi' in x.lower() else 1)
             first_key = ready_keys[0]
             logger.info(f"⚡ Serving ready dataset '{first_key}' from cache")
             _active_dataset_key = first_key
