@@ -53,6 +53,25 @@ We considered Deep Learning (RNN/LSTMs) but **rejected them** because they lack 
 
 ---
 
+## 📊 Sample Datasets: Test the Engine
+FinSight is domain-agnostic. You can test the intelligence pipeline with any transactional or summary dataset. Below are some recommended high-quality datasets:
+
+### 1. Retail & E-commerce (Transactional)
+*   [Online Retail II (2009-2010)](https://www.kaggle.com/datasets/jillwang87/online-retail-ii?select=online_retail_09_10.csv)
+*   [Online Retail II (2010-2011)](https://www.kaggle.com/datasets/jillwang87/online-retail-ii?select=online_retail_10_11.csv)
+*   *Detection Signal*: Looks for `Invoice`, `StockCode`, and `Quantity`.
+
+### 2. Banking & Fintech (Summary/Churn)
+*   [Bank Customer Churn Prediction](https://www.kaggle.com/datasets/marslinoedward/bank-customer-churn-prediction?select=Churn_Modelling.csv)
+*   *Detection Signal*: Looks for `Exited`, `CreditScore`, and `Tenure`.
+
+### 3. UPI & Tax (Internal Demo)
+*   Located in: `backend/datasets/`
+*   Includes **UPI Transactional logs** and **Tax/Income credits** (Form 26AS style).
+*   *Detection Signal*: Looks for `VPA`, `Txn ID`, `PAN`, or `TDS Amount`.
+
+---
+
 ## 🛠️ Implementation & Setup
 
 ### 1. Quick Start (Docker Compose)
