@@ -81,3 +81,25 @@ vi.mock('jspdf', () => ({
 // ── window.URL.createObjectURL stub ───────────────────────────────────────
 globalThis.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
 globalThis.URL.revokeObjectURL = vi.fn();
+
+// ── Recharts stub ─────────────────────────────────────────────────────────
+// ResponsiveContainer often hangs in jsdom because it waits for parent dimensions.
+vi.mock('recharts', async () => {
+  const OriginalModule = await vi.importActual('recharts');
+  return {
+    ...OriginalModule,
+    ResponsiveContainer: ({ children }) => (
+      <div className="recharts-responsive-container" style={{ width: '800px', height: '800px' }}>
+        {children}
+      </div>
+    ),
+  };
+});
+
+// ── ResizeObserver stub ───────────────────────────────────────────────────
+// Required for components that perform layout measurements (like Recharts).
+globalThis.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
