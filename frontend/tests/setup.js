@@ -1,10 +1,3 @@
-/**
- * tests/setup.js — Global test setup for Vitest + React Testing Library.
- *
- * - Imports jest-dom matchers (toBeInTheDocument, toHaveClass, etc.)
- * - Mocks framer-motion to avoid animation side-effects
- * - Mocks axios globally so no real HTTP requests are made
- */
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
@@ -85,13 +78,15 @@ globalThis.URL.revokeObjectURL = vi.fn();
 // ── Recharts stub ─────────────────────────────────────────────────────────
 // ResponsiveContainer often hangs in jsdom because it waits for parent dimensions.
 vi.mock('recharts', async () => {
+  const React = require('react');
   const OriginalModule = await vi.importActual('recharts');
   return {
     ...OriginalModule,
     ResponsiveContainer: ({ children }) => (
-      <div className="recharts-responsive-container" style={{ width: '800px', height: '800px' }}>
-        {children}
-      </div>
+      React.createElement('div', {
+        className: 'recharts-responsive-container',
+        style: { width: '800px', height: '800px' }
+      }, children)
     ),
   };
 });
@@ -103,3 +98,4 @@ globalThis.ResizeObserver = class ResizeObserver {
   unobserve() {}
   disconnect() {}
 };
+
