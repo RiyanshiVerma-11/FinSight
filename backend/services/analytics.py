@@ -250,7 +250,8 @@ class AnalyticsEngine:
         try:
             # OPTIMIZATION: Silhouette is O(N^2). Sample if N is large.
             if len(rfm) > 5000:
-                indices = np.random.choice(len(rfm), 5000, replace=False)
+                rng = np.random.default_rng(seed=42)
+                indices = rng.choice(len(rfm), 5000, replace=False)
                 sil_score = silhouette_score(scaled_features[indices], rfm['cluster'].iloc[indices])
                 logger.info(f"Silhouette score calculated using 5,000 sample points (N={len(rfm)})")
             else:

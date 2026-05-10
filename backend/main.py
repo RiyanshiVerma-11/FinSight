@@ -29,6 +29,10 @@ _cache_lock = threading.Lock() # Lock for cache and status updates
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, "datasets")
 
+# ── Configuration Constants ──
+MAX_ROWS = 65000
+MIN_USERS_TO_KEEP = 100
+
 
 # ──────────────────────────────────────
 #  Helpers
@@ -204,18 +208,20 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     # ── MEMORY GUARD FOR CLOUD (RENDER/HEROKU) ──
     # To prevent 512MB RAM OOM crashes, we downsample extremely large datasets 
     # while preserving complete histories for the sampled users to keep RFM accurate.
-    MAX_ROWS = 65000
     if len(df) > MAX_ROWS:
-        import numpy as np
-        import logging
-        logging.getLogger("uvicorn").warning(f"⚠️ Memory Guard: Downsampling dataset from {len(df)} to ~{MAX_ROWS} rows to prevent OOM.")
+        logger.warning(f"⚠️ Memory Guard: Downsampling dataset from {len(df)} to ~{MAX_ROWS} rows to prevent OOM.")
         unique_users = df['user_id'].unique()
         keep_ratio = MAX_ROWS / len(df)
-        num_users_to_keep = max(100, int(len(unique_users) * keep_ratio))
+        num_users_to_keep = max(MIN_USERS_TO_KEEP, int(len(unique_users) * keep_ratio))
         
-        # Deterministic sampling for consistency
-        np.random.seed(42)
-        keep_users = np.random.choice(unique_users, num_users_to_keep, replace=False)
+        # Use Generator instead of global seed for isolated randomness
+        rng = np.random.default_rng(seed=42)
+        keep_users = rng.choice(unique_users, num_users_to_keep, replace=False)
+        
+        # Track dropped users for audit trail (logging summary)
+        dropped_users_count = len(unique_users) - num_users_to_keep
+        logger.info(f"📋 Audit Trail: Dropping {dropped_users_count} users to maintain performance. Keeping {num_users_to_keep} users.")
+        
         df = df[df['user_id'].isin(keep_users)]
         
     return df

@@ -15,6 +15,10 @@ from services.analytics import AnalyticsEngine  # type: ignore
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ── Configuration Constants ──
+MAX_ROWS = 65000
+MIN_USERS_TO_KEEP = 100
+
 def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     """Normalise various retail formats into the standard internal schema."""
     column_variants = {
@@ -55,6 +59,25 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
 
     required = ['user_id', 'timestamp', 'amount']
     df = df.dropna(subset=[c for c in required if c in df.columns])
+    
+    # ── MEMORY GUARD ──
+    if len(df) > MAX_ROWS:
+        logger.warning(f"⚠️ Memory Guard: Downsampling from {len(df)} to ~{MAX_ROWS} rows")
+        
+        unique_users = df['user_id'].unique()
+        keep_ratio = MAX_ROWS / len(df)
+        num_users_to_keep = max(MIN_USERS_TO_KEEP, int(len(unique_users) * keep_ratio))
+        
+        # Use Generator instead of global seed
+        rng = np.random.default_rng(seed=42)
+        keep_users = rng.choice(unique_users, num_users_to_keep, replace=False)
+        
+        # Audit Trail
+        dropped_users_count = len(unique_users) - num_users_to_keep
+        logger.info(f"📋 Audit Trail: Dropping {dropped_users_count} users to maintain performance. Keeping {num_users_to_keep} users.")
+        
+        df = df[df['user_id'].isin(keep_users)]
+        
     return df
 
 def analyze_dataset(file_path):
