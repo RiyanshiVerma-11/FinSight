@@ -17,15 +17,17 @@ const MOCK_DATA = {
     avg_churn_risk: 0.34,
     segments: { 'At Risk': 820, 'Loyal': 1240, 'Champions': 650 },
     segment_churn: [
-      { segment: 'At Risk',    avg_churn: 0.72, revenue_at_risk: 240000 },
-      { segment: 'Loyal',      avg_churn: 0.18, revenue_at_risk: 85000  },
-      { segment: 'Champions',  avg_churn: 0.08, revenue_at_risk: 32000  },
+      { segment: 'At Risk',    avg_churn: 0.72, revenue_at_risk: 240000, status: 'CRITICAL' },
+      { segment: 'Loyal',      avg_churn: 0.18, revenue_at_risk: 85000,  status: 'STABLE' },
+      { segment: 'Champions',  avg_churn: 0.08, revenue_at_risk: 32000,  status: 'STABLE' },
     ],
     revenue_at_risk: { total: 840000 },
+    potential_recovery: { value: 150000, efficiency_pct: 45 },
     top_drivers: [
       { feature: 'recency_deviation', importance: 0.42, direction: 'increases_churn' },
     ],
     metrics: { roc_auc: 0.87 },
+    data_health: { score: 92 }
   },
   users: Array.from({ length: 50 }, (_, i) => ({
     user_id: `U${i + 1}`,
@@ -51,14 +53,15 @@ describe('ExecutiveDashboard', () => {
   });
 
   it('renders all 4 KPI cards', () => {
-    expect(screen.getByText(/Market Footprint/i)).toBeInTheDocument();
-    expect(screen.getByText(/Risk Intensity/i)).toBeInTheDocument();
-    expect(screen.getByText(/Revenue Exposure/i)).toBeInTheDocument();
-    expect(screen.getByText(/Recovery Capture/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Market Footprint/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Risk Intensity/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Revenue Exposure/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Recovery Capture/i)[0]).toBeInTheDocument();
   });
 
   // ── KPI values ────────────────────────────────────────────────────────
   it('displays correct total users', () => {
+    // 5000 should be formatted with comma
     expect(screen.getByText('5,000')).toBeInTheDocument();
   });
 
@@ -68,12 +71,13 @@ describe('ExecutiveDashboard', () => {
 
   it('displays revenue at risk with ₹ prefix and Lakh formatting', () => {
     // 840,000 should format to ₹8.40L
-    expect(screen.getByText(/₹8\.40L/)).toBeInTheDocument();
+    // Use getAllByText as it appears in narrative and KPI card
+    expect(screen.getAllByText(/₹8\.40L/)[0]).toBeInTheDocument();
   });
 
   // ── Visualizations ─────────────────────────────────────────────
   it('renders Strategic Playbook section', () => {
-    expect(screen.getByText(/Strategic Playbook/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Strategic Playbook/i)[0]).toBeInTheDocument();
   });
 
   it('shows segmentation chart header', () => {
@@ -86,6 +90,7 @@ describe('ExecutiveDashboard', () => {
 
   // ── Segment churn ─────────────────────────────────────────────────────
   it('renders segment names in churn section', () => {
-    expect(screen.getByText('At Risk')).toBeInTheDocument();
+    // "At Risk" appears multiple times, use getAll
+    expect(screen.getAllByText('At Risk')[0]).toBeInTheDocument();
   });
 });

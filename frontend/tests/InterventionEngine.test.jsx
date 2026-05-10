@@ -7,8 +7,11 @@
  */
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import InterventionEngine from '../src/components/InterventionEngine.jsx';
+import axios from 'axios';
+
+vi.mock('axios');
 
 const MOCK_SEGMENTS = {
   'At Risk':    820,
@@ -27,6 +30,10 @@ const MOCK_SEG_CHURN = [
 ];
 
 describe('InterventionEngine', () => {
+  beforeEach(() => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { interventions: [], source: 'rule_based' } });
+  });
+
   // ── Rendering ───────────────────────────────────────────────────────────
   it('renders the section heading', () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
@@ -44,14 +51,16 @@ describe('InterventionEngine', () => {
     expect(screen.getByText(/Scale/i)).toBeInTheDocument();
     expect(screen.getByText(/Business Impact/i)).toBeInTheDocument();
     expect(screen.getByText(/Recommended Action/i)).toBeInTheDocument();
-    expect(screen.getByText(/Recovery ROI/i)).toBeInTheDocument();
+    // Use getAllByText as "Recovery ROI" appears in header and rows (as HIGH RECOVERY ROI)
+    expect(screen.getAllByText(/Recovery ROI/i)[0]).toBeInTheDocument();
   });
 
   // ── Segment rows ────────────────────────────────────────────────────────
   it('renders a row for each segment', () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
     Object.keys(MOCK_SEGMENTS).forEach(seg => {
-      expect(screen.getByText(seg)).toBeInTheDocument();
+      // Use regex as the text might be part of a larger string or broken into nodes
+      expect(screen.getAllByText(new RegExp(seg, 'i'))[0]).toBeInTheDocument();
     });
   });
 
@@ -94,6 +103,6 @@ describe('InterventionEngine', () => {
         segChurn={[{ segment: 'UnknownSegmentXYZ', avg_churn: 0.5 }]}
       />
     );
-    expect(screen.getByText('UnknownSegmentXYZ')).toBeInTheDocument();
+    expect(screen.getAllByText(/UnknownSegmentXYZ/i)[0]).toBeInTheDocument();
   });
 });

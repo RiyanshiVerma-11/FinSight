@@ -15,7 +15,9 @@ export default defineConfig({
     // Vitest configuration
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./tests/setup.js'],
+    // vite.config.js
+    // vitest.config.js
+    setupFiles: ['./tests/setup.jsx'],
     css: true,
     coverage: {
       provider: 'v8',

@@ -12,6 +12,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
 import WhatIfPanel from '../src/components/WhatIfPanel.jsx';
 
+vi.mock('axios');
+
 const MOCK_SEGMENTS = {
   'At Risk': 820,
   'Loyal': 1240,
@@ -47,9 +49,10 @@ describe('WhatIfPanel', () => {
 
   it('renders segment selector', () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
-    expect(screen.getByText(/Target Segment/i)).toBeInTheDocument();
-    expect(screen.getByText('At Risk')).toBeInTheDocument();
-    expect(screen.getByText('Loyal')).toBeInTheDocument();
+    expect(screen.getByText(/Target Segment Persona/i)).toBeInTheDocument();
+    // Use regex to find text that might be broken across nodes like "The Fading Star (At Risk)"
+    expect(screen.getAllByText(/At Risk/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Loyal/i)[0]).toBeInTheDocument();
   });
 
   // ── Manual mode ─────────────────────────────────────────────────────────
@@ -99,8 +102,8 @@ describe('WhatIfPanel', () => {
   it('displays impact hero card after successful simulation', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
 
-    // Select segment
-    const select = screen.getByRole('combobox');
+    // Select segment - use more specific selector
+    const select = screen.getAllByRole('combobox')[0];
     await userEvent.selectOptions(select, 'At Risk');
 
     // Click Run
@@ -114,7 +117,7 @@ describe('WhatIfPanel', () => {
 
   it('shows Prescriptive Insight section after simulation', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
-    const select = screen.getByRole('combobox');
+    const select = screen.getAllByRole('combobox')[0];
     await userEvent.selectOptions(select, 'At Risk');
     await userEvent.click(screen.getByRole('button', { name: /Run Simulation/i }));
 
@@ -125,7 +128,7 @@ describe('WhatIfPanel', () => {
 
   it('shows recommendation text after simulation', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
-    const select = screen.getByRole('combobox');
+    const select = screen.getAllByRole('combobox')[0];
     await userEvent.selectOptions(select, 'At Risk');
     await userEvent.click(screen.getByRole('button', { name: /Run Simulation/i }));
 
@@ -137,7 +140,7 @@ describe('WhatIfPanel', () => {
   // ── API call ─────────────────────────────────────────────────────────────
   it('calls axios.post /whatif with correct payload', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
-    const select = screen.getByRole('combobox');
+    const select = screen.getAllByRole('combobox')[0];
     await userEvent.selectOptions(select, 'At Risk');
     await userEvent.click(screen.getByRole('button', { name: /Run Simulation/i }));
 
