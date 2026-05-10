@@ -702,6 +702,8 @@ def _warmup_caches():
         return
 
     files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
+    # Prioritize specific domains (UPI, Tax, Churn) for warmup
+    files.sort(key=lambda x: 0 if any(d in x.lower() for d in ['upi', 'tax', 'churn']) else 1)
     
     # 2. Process all datasets SEQUENTIALLY to save RAM on free tier
     logger.info(f"⏳ Processing {len(files)} datasets sequentially...")
