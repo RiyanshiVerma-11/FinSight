@@ -625,18 +625,18 @@ def _build_synthetic_demo_df(n_users: int = 500, seed: int = 42) -> pd.DataFrame
     rows = []
 
     for uid in range(1, n_users + 1):
-        # Add a subtle behavioral signal: users with even IDs have higher frequency
-        # and more recent transactions, making them less likely to churn.
-        is_loyal = (uid % 2 == 0)
+        # RESILIENCE FIX: Increase loyalty ratio to 80% to lower baseline churn risk
+        # This makes the "fallback" view look more healthy and professional.
+        is_loyal = (uid % 5 != 0) # 80% loyal, 20% churn-prone
         n_tx = int(rng.integers(10, 40)) if is_loyal else int(rng.integers(2, 8))
         
         for _ in range(n_tx):
-            # Loyal users have transactions spread across the year, including very recent ones.
-            # Churn-prone users have transactions clustered in the past.
             if is_loyal:
+                # Loyal users seen recently
                 days_ago = int(rng.integers(0, 365))
             else:
-                days_ago = int(rng.integers(60, 365)) # Not seen in last 60 days
+                # Churn-prone users haven't been seen in 3-12 months
+                days_ago = int(rng.integers(90, 365))
                 
             amount = round(float(rng.uniform(10, 5000)), 2)
             rows.append(
@@ -827,6 +827,8 @@ async def get_default_data():
 
     # 2. If nothing is 'ready' yet, check if anything is on disk
     files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
+    # SORTING: Prioritize upi_transactions.csv for the demo
+    files.sort(key=lambda x: 0 if 'upi' in x.lower() else 1)
     
     # If there's a file, we can try a VERY short wait (max 2s) just in case it's almost done
     if files:
