@@ -49,16 +49,22 @@ def _read_file(path: str) -> pd.DataFrame:
     if path.endswith('.csv'):
         # PRODUCTION FIX: Use robust multi-encoding detection for local files 
         # to match the upload logic and handle BOM/special characters consistently.
+        
+        # MEMORY GUARD: On cloud (Render/Heroku), read only first 100k rows
+        # to prevent OOM before downsampling can occur.
+        nrows = 100000 if IS_CLOUD else None
+        
         for enc in ['utf-8-sig', 'utf-8', 'ISO-8859-1']:
             try:
                 # Use engine='python' and sep=None to auto-detect delimiters
-                return pd.read_csv(path, encoding=enc, sep=None, engine='python')
+                return pd.read_csv(path, encoding=enc, sep=None, engine='python', nrows=nrows)
             except Exception:
                 continue
         raise ValueError(f"Could not read CSV '{path}' with any encoding.")
     elif path.endswith('.xlsx'):
         return pd.read_excel(path)
     raise ValueError(f"Unsupported format: {path}")
+
 
 
 import difflib
@@ -804,72 +810,52 @@ async def _analyze_all_live():
 
 @app.get("/demo-data")
 async def get_default_data():
-    """Returns the first available dataset as the default dashboard data."""
+    """Returns the first available dataset as the default dashboard data.
+    RESILIENCE FIX: If real datasets are still warming up, serve synthetic demo
+    immediately to prevent 504 timeouts on cloud platforms.
+    """
     global _active_dataset_key
-    # 1. Check if any real dataset is already cached
+    
+    # 1. Check if any real dataset is already cached and ready
     with _cache_lock:
-        if _results_cache:
-            first_key = list(_results_cache.keys())[0]
-            logger.info(f"⚡ Serving '{first_key}' from cache")
+        ready_keys = [k for k, v in _processing_status.items() if v == "ready" and k in _results_cache]
+        if ready_keys:
+            first_key = ready_keys[0]
+            logger.info(f"⚡ Serving ready dataset '{first_key}' from cache")
             _active_dataset_key = first_key
             return _results_cache[first_key]
 
-    # 2. If nothing cached, check if anything is on disk
+    # 2. If nothing is 'ready' yet, check if anything is on disk
     files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
-    if not files:
-        logger.warning("⚠️ No datasets found on disk. Serving deterministic synthetic demo dataset.")
-        synthetic_key = "synthetic_demo"
-        if synthetic_key in _results_cache:
-            return _results_cache[synthetic_key]
-        demo_df = _build_synthetic_demo_df()
-        result = _process_dataframe(demo_df, cache_key=synthetic_key)
-        result["summary"]["is_synthetic_demo"] = True
-        result["summary"]["source_note"] = "Generated fallback dataset (no local dataset files found)."
-        _results_cache[synthetic_key] = result
-        _active_dataset_key = synthetic_key
-        return result
-
-    fname = files[0]
     
-    # 3. Wait for the background process to finish if it's already working on it
-    max_wait = 120  # Increased for full dataset processing (no sampling)
-    wait_interval = 3
-    for _ in range(0, max_wait, wait_interval):
-        with _cache_lock:
-            if fname in _results_cache:
-                _active_dataset_key = fname
-                return _results_cache[fname]
-            if _processing_status.get(fname) != "processing":
-                # Not being processed yet? Trigger it (shouldn't happen with warmup, but just in case)
-                break 
-        logger.info(f"⌛ Waiting for '{fname}' to finish processing...")
-        await asyncio.sleep(wait_interval)
-
-    # 4. If we reached here and it's still not ready, try to process a SMALL SAMPLE synchronously
-    # this is a last-resort fallback to prevent a 504 timeout
-    logger.warning(f"⚠️  Wait timeout for '{fname}'. Triggering fast-sample fallback.")
-    try:
-        fpath = os.path.join(DATASET_DIR, fname)
-        # Optimized: Read only first 25k rows to avoid OOM on large files during fallback
-        if fname.endswith('.csv'):
-            df = pd.read_csv(fpath, encoding='ISO-8859-1', nrows=25000)
-        else:
-            df = pd.read_excel(fpath) # Excel doesn't support nrows easily
+    # If there's a file, we can try a VERY short wait (max 2s) just in case it's almost done
+    if files:
+        fname = files[0]
+        for _ in range(2): # Max 2 seconds wait
+            with _cache_lock:
+                if fname in _results_cache and _processing_status.get(fname) == "ready":
+                    _active_dataset_key = fname
+                    return _results_cache[fname]
+            await asyncio.sleep(1)
             
-        df = _prepare_retail_df(df)
-        original_len = 25000 # Approximation for speed
-        sampled_rows = len(df)
-        
-        # We don't need to sample again if we already read only 25k rows
-        result = _process_dataframe(df, cache_key=f"demo_{fname}")
-        result['summary']['is_sampled'] = True
-        result['summary']['sample_size'] = sampled_rows
-        result['summary']['total_source_rows'] = "Estimated 100k+" if original_len == 25000 else original_len
-        _active_dataset_key = f"demo_{fname}"
-        return result
-    except Exception as e:
-        logger.error(f"Fallback processing failed: {e}")
-        raise HTTPException(status_code=503, detail="Server is warming up. Please refresh in a minute.")
+    # 3. Fallback to synthetic demo immediately if real data isn't ready
+    # This ensures the app loads in <1s even during background warmup
+    synthetic_key = "synthetic_demo"
+    if synthetic_key in _results_cache:
+        _active_dataset_key = synthetic_key
+        return _results_cache[synthetic_key]
+    
+    logger.warning("⚠️ Real datasets not ready. Serving deterministic synthetic demo dataset.")
+    demo_df = _build_synthetic_demo_df()
+    result = _process_dataframe(demo_df, cache_key=synthetic_key)
+    result["summary"]["is_synthetic_demo"] = True
+    result["summary"]["source_note"] = "Serving fallback synthetic data while background engine warms up."
+    
+    with _cache_lock:
+        _results_cache[synthetic_key] = result
+    _active_dataset_key = synthetic_key
+    return result
+
 
 
 @app.post("/analyze")
