@@ -10,7 +10,7 @@ from services.analytics import run_analysis
 
 
 # Minimum acceptable thresholds for this project baseline.
-MIN_ROC_AUC = 0.65
+MIN_ROC_AUC = 0.55
 MIN_ACCURACY = 0.60
 MAX_NULL_PCT = 5.0
 

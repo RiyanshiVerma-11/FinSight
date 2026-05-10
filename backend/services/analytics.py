@@ -72,6 +72,7 @@ class AnalyticsEngine:
         self._feature_columns = []
         self._last_threshold = 0.5
         self._last_rfm = None
+        self._domain = 'retail'
         self._model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'models')
         os.makedirs(self._model_dir, exist_ok=True)
 
@@ -79,11 +80,14 @@ class AnalyticsEngine:
         """Return True iff model has been fitted (safe for any sklearn estimator)."""
         if model is None:
             return False
-        try:
-            check_is_fitted(model)
+        # Robust check for fitted status across different sklearn versions and wrappers
+        for attr in ['classes_', 'n_features_in_', 'feature_names_in_', 'base_estimator_']:
+            if hasattr(model, attr):
+                return True
+        # CalibratedClassifierCV check
+        if hasattr(model, 'calibrated_classifiers_'):
             return True
-        except Exception:
-            return False
+        return False
 
     def get_feature_importances(self):
         """Safely retrieve feature importances from the best raw fitted model available."""
@@ -131,6 +135,11 @@ class AnalyticsEngine:
     # ────────────────────────────────────────────
     def calculate_rfm(self, df):
         """Dynamic RFM with Inter-Purchase Interval & Monetary Velocity."""
+        # Auto-detect domain if present in df
+        if 'domain' in df.columns:
+            self._domain = str(df['domain'].iloc[0])
+            logger.info(f"⚙️  Analytics Engine switching to {self._domain.upper()} mode")
+            
         # De-duplicate columns at the start
         df = df.loc[:, ~df.columns.duplicated()]
         # 1. Ensure absolute datetime conversion
@@ -271,6 +280,9 @@ class AnalyticsEngine:
         Predicts churn. Supports both temporal transactional data and 
         pre-labeled summary datasets (like Bank Churn).
         """
+        if 'domain' in df.columns:
+            self._domain = str(df['domain'].iloc[0])
+            
         # De-duplicate columns at the start
         df = df.loc[:, ~df.columns.duplicated()]
         rfm_df = rfm_df.loc[:, ~rfm_df.columns.duplicated()]
@@ -283,9 +295,16 @@ class AnalyticsEngine:
                 logger.info(f"✨ Using PERSISTENT model cache for '{model_id}' (AUC: {cached_metrics.get('roc_auc', 0):.4f})")
                 
                 # Apply model to current data
+                extra_features = df.groupby('user_id').first().reset_index()
+                # ── CRITICAL: Drop overlaps to prevent merge crashes ──
+                overlap = [c for c in extra_features.columns if c in rfm_df.columns and c != 'user_id']
+                if overlap:
+                    extra_features = extra_features.drop(columns=overlap)
+
                 current_features = rfm_df.merge(
-                    df.groupby('user_id').first().reset_index(), 
+                    extra_features, 
                     on='user_id', 
+                    how='left',
                     suffixes=('', '_raw')
                 )
                 feature_cols = self._feature_columns or [c.lower().replace(' ', '_') for c in self._feature_names]
@@ -306,24 +325,8 @@ class AnalyticsEngine:
                     if col not in rfm_df.columns:
                         rfm_df[col] = current_features[col]
                 
-                # ── Consistent Forward-Looking Metrics (Cached Path) ──
-                # We project risk over a 90-day horizon (industry standard for retail)
-                # Revenue at Risk = Daily Velocity * 90 Days * Churn Probability
-                rfm_df['revenue_at_risk'] = (rfm_df['monetary_velocity'] * 90 * rfm_df['churn_probability'])
-                
-                # Defensible LTV = Historical + (Daily Velocity * 365 Days * (1 - Churn Probability))
-                # This estimates 1-year forward value weighted by retention
-                rfm_df['predicted_ltv'] = rfm_df['monetary'] + (rfm_df['monetary_velocity'] * 365 * (1 - rfm_df['churn_probability']))
-                
-                # Outlier Guard: Clip metrics at 99th percentile to preserve variance for high-value users
-                # We also calculate a Priority Score (Churn * Future Value * Engagement Sensitivity)
-                rfm_df['priority_score'] = (rfm_df['churn_probability'] * rfm_df['revenue_at_risk'] * 1.2).clip(0, 100)
-                
-                for col in ['revenue_at_risk', 'predicted_ltv']:
-                    if col in rfm_df.columns:
-                        limit = rfm_df[col].quantile(0.99)
-                        rfm_df[col] = rfm_df[col].clip(lower=0, upper=limit)
-                        rfm_df[col] = rfm_df[col].round(2)
+                # ── Apply Domain-Aware Financial Metrics ──
+                rfm_df = self._apply_financial_metrics(df, rfm_df)
                 
                 # Drivers & SHAP
                 importances = self.get_feature_importances()
@@ -352,14 +355,38 @@ class AnalyticsEngine:
         # We merge RFM features with any additional numeric features from the original df
         # Identify additional columns from original df, but drop reserved ones to prevent merge conflicts
         extra_info = df.groupby('user_id').first().reset_index()
+        
+        # ── CRITICAL FIX: Prevent Overlap Conflicts ──
+        # Drop columns that are already in rfm_df (behavioral features) to prevent 
+        # merge conflicts and ensure we use the cleaned/calculated RFM versions.
+        rfm_df = rfm_df.loc[:, ~rfm_df.columns.duplicated()]
+        extra_info = extra_info.loc[:, ~extra_info.columns.duplicated()]
+        
+        cols_to_drop = [c for c in extra_info.columns if c in rfm_df.columns and c != 'user_id']
+        # Also drop reserved internal names
         reserved = ['segment', 'cluster', 'r_score', 'f_score', 'm_score', 'rfm_score', 'rfm_raw']
-        extra_info = extra_info.drop(columns=[c for c in reserved if c in extra_info.columns])
+        cols_to_drop.extend([c for c in reserved if c in extra_info.columns and c not in cols_to_drop])
+        
+        extra_info = extra_info.drop(columns=cols_to_drop)
 
-        merged_df = rfm_df.merge(
-            extra_info, 
-            on='user_id', 
-            suffixes=('', '_raw')
-        )
+        logger.info(f"Merging features. RFM cols: {list(rfm_df.columns)}. Extra cols: {list(extra_info.columns)}")
+        try:
+            merged_df = rfm_df.merge(
+                extra_info, 
+                on='user_id', 
+                how='left',
+                suffixes=('', '_extra')
+            )
+        except Exception as e:
+            logger.error(f"Merge failed! Attempting recovery. Error: {e}")
+            # Final fallback: drop all potential collisions
+            overlap = [c for c in extra_info.columns if c in rfm_df.columns and c != 'user_id']
+            extra_info_clean = extra_info.drop(columns=overlap)
+            merged_df = rfm_df.merge(extra_info_clean, on='user_id', how='left', suffixes=('', '_extra'))
+
+
+
+
         
         # Identify numeric features for training
         # We include rank scores as they are powerful behavioral signals
@@ -371,10 +398,10 @@ class AnalyticsEngine:
             'amount',  # raw transaction amount (already captured in monetary)
         ]
         # Also exclude _raw suffix columns (duplicates from merge) and string-derived numerics
-        feature_cols = [
+        feature_cols = sorted([
             c for c in merged_df.select_dtypes(include=[np.number]).columns 
             if c not in exclude and not c.endswith('_raw')
-        ]
+        ])
 
         
         # 2. Detect Ground Truth
@@ -705,61 +732,8 @@ class AnalyticsEngine:
             if col not in rfm_df.columns:
                 rfm_df[col] = current_features[col]
 
-        # ── Defensible Customer Lifetime Value (LTV) ──
-        # Formula: Historical + (Expected Future 1-Year Revenue * Retention Probability)
-        # We use monetary_velocity to project future spend based on actual historical intensity.
-        rfm_df['predicted_ltv'] = rfm_df['monetary'] + (rfm_df['monetary_velocity'] * 365 * (1 - rfm_df['churn_probability']))
-
-        # ── Business-Grade Revenue at Risk (90-Day Exposure) ──
-        # Differentiate logic based on dataset type to prevent artificial inflation:
-        # Transactional: We risk their future expected 90-day spend (Velocity * 90)
-        # Summary (Bank/SaaS): We risk their entire current balance (Monetary)
-        if '_is_summary' in df.columns:
-            rfm_df['revenue_at_risk'] = rfm_df['monetary'] * rfm_df['churn_probability']
-        else:
-            rfm_df['revenue_at_risk'] = rfm_df['monetary_velocity'] * 90 * rfm_df['churn_probability']
-            
-        # Cap at total monetary value to keep it defensible
-        rfm_df['revenue_at_risk'] = rfm_df['revenue_at_risk'].clip(upper=rfm_df['monetary'].clip(lower=1))
-
-
-        # ── Outlier Guard & Priority Scoring ──
-        # Priority = Churn % * Future Revenue Potential * Sensitivity Factor
-        rfm_df['priority_score'] = (rfm_df['churn_probability'] * rfm_df['revenue_at_risk'] * 1.2).clip(0, 100)
-
-        # Extreme wholesale buyers can inflate aggregate risk metrics. 
-        # We clip to the 99th percentile to ensure we keep the natural distribution of top users.
-        for col in ['revenue_at_risk', 'predicted_ltv']:
-            if col in rfm_df.columns:
-                limit = rfm_df[col].quantile(0.99)
-                rfm_df[col] = rfm_df[col].clip(lower=0, upper=limit)
-                rfm_df[col] = rfm_df[col].round(2)
-
-        # ── Data-Driven Unit Economics (Professional Cost Model) ──
-        # Real costs include: Platform Fees + SMS/Email Infra + Support Overhead + Incentive
-        def calc_cost(row):
-            aov = row['monetary'] / max(row['frequency'], 1)
-            risk = row['churn_probability']
-            
-            # Base operational cost (Professional Grade)
-            base_ops = 150.0 
-            
-            # Variable cost (Discount/Incentive) based on Risk Severity
-            if risk > 0.8: var_pct = 0.25    # Critical: 25% recovery discount
-            elif risk > 0.5: var_pct = 0.15  # High: 15% offer
-            elif risk > 0.2: var_pct = 0.08  # Medium: 8% nudge
-            else: var_pct = 0.03             # Low: 3% brand reminder
-            
-            cost = base_ops + (aov * var_pct)
-            return round(float(cost), 2)
-
-        rfm_df['intervention_cost'] = rfm_df.apply(calc_cost, axis=1)
-        rfm_df['is_profitable'] = rfm_df['predicted_ltv'] > (rfm_df['monetary'] + rfm_df['intervention_cost'])
-        
-        # Rounding all financial metrics for professional presentation
-        for col in ['revenue_at_risk', 'predicted_ltv', 'intervention_cost']:
-            if col in rfm_df.columns:
-                rfm_df[col] = rfm_df[col].round(2)
+        # ── Apply Domain-Aware Financial Metrics ──
+        rfm_df = self._apply_financial_metrics(df, rfm_df)
 
         # 7. Drivers & SHAP
         importances = self.get_feature_importances()
@@ -800,6 +774,52 @@ class AnalyticsEngine:
 
         return rfm_df, fintech_drivers, metrics, mapped_shap
 
+    def _apply_financial_metrics(self, df, rfm_df):
+        # ── Defensible Customer Lifetime Value (LTV) ──
+        rfm_df['predicted_ltv'] = rfm_df['monetary'] + (rfm_df['monetary_velocity'] * 365 * (1 - rfm_df['churn_probability']))
+
+        # ── Business-Grade Revenue at Risk (90-Day Exposure) ──
+        if '_is_summary' in df.columns or self._domain == 'bank_churn':
+            rfm_df['revenue_at_risk'] = rfm_df['monetary'] * rfm_df['churn_probability']
+        elif self._domain == 'tax':
+            rfm_df['revenue_at_risk'] = rfm_df['monetary'] * rfm_df['churn_probability']
+        elif self._domain == 'upi':
+            rfm_df['revenue_at_risk'] = rfm_df['monetary_velocity'] * 30 * rfm_df['churn_probability']
+        else:
+            rfm_df['revenue_at_risk'] = rfm_df['monetary_velocity'] * 90 * rfm_df['churn_probability']
+            
+        # Cap at total monetary value to keep it defensible
+        rfm_df['revenue_at_risk'] = rfm_df['revenue_at_risk'].clip(upper=rfm_df['monetary'].clip(lower=1))
+
+        # ── Outlier Guard & Priority Scoring ──
+        rfm_df['priority_score'] = (rfm_df['churn_probability'] * rfm_df['revenue_at_risk'] * 1.2).clip(0, 100)
+
+        for col in ['revenue_at_risk', 'predicted_ltv']:
+            if col in rfm_df.columns:
+                limit = rfm_df[col].quantile(0.99)
+                rfm_df[col] = rfm_df[col].clip(lower=0, upper=limit)
+
+        # ── Data-Driven Unit Economics (Professional Cost Model) ──
+        def calc_cost(row):
+            aov = row['monetary'] / max(row['frequency'], 1)
+            risk = row['churn_probability']
+            base_ops = 150.0 
+            if risk > 0.8: var_pct = 0.25
+            elif risk > 0.5: var_pct = 0.15
+            elif risk > 0.2: var_pct = 0.08
+            else: var_pct = 0.03
+            return round(float(base_ops + (aov * var_pct)), 2)
+
+        rfm_df['intervention_cost'] = rfm_df.apply(calc_cost, axis=1)
+        rfm_df['is_profitable'] = rfm_df['predicted_ltv'] > (rfm_df['monetary'] + rfm_df['intervention_cost'])
+        
+        # Rounding all financial metrics for professional presentation
+        for col in ['revenue_at_risk', 'predicted_ltv', 'intervention_cost']:
+            if col in rfm_df.columns:
+                rfm_df[col] = rfm_df[col].round(2)
+                
+        return rfm_df
+
     def _map_to_fintech_drivers(self, drivers, shap_data):
         """Maps raw feature names to human-readable fintech labels."""
         FINTECH_LABELS = {
@@ -823,7 +843,30 @@ class AnalyticsEngine:
             'fail': 'Transaction Failure Rate',
             'salary': 'Estimated Income',
             'age': 'Customer Age',
+            'is_failure': 'Transaction Failure Rate',
+            'response_code': 'Network Error Sensitivity',
+            'mcc': 'Merchant Category Exposure',
+            'status': 'Payment Success Rate',
+            'fy': 'Fiscal Year Continuity',
+            'pan': 'PAN Verification Status'
         }
+        
+        # Domain-specific overrides for clearer labels
+        if self._domain == 'upi':
+            FINTECH_LABELS.update({
+                'monetary_velocity': 'Daily Transaction Volume',
+                'frequency': 'UPI Usage Frequency',
+                'monetary': 'Total Spent via UPI',
+                'recency': 'Days Since Last Payment',
+                'description': 'Frequent Payees'
+            })
+        elif self._domain == 'tax':
+            FINTECH_LABELS.update({
+                'monetary_velocity': 'Daily Income Run-rate',
+                'monetary': 'Total Taxable Income',
+                'frequency': 'Payment Frequency',
+                'recency': 'Days Since Last Credit'
+            })
         fintech_drivers = []
         used_labels = set()
         sorted_keys = sorted(FINTECH_LABELS.keys(), key=len, reverse=True)
@@ -868,7 +911,12 @@ class AnalyticsEngine:
         # Adaptive future window: 25% of total data range, capped between 30-90 days
         # This ensures balanced churn labels for any dataset
         if future_days is None:
-            future_days = min(90, max(30, int(total_range * 0.25)))
+            if self._domain == 'tax':
+                future_days = min(180, max(60, int(total_range * 0.4))) # Longer window for tax
+            elif self._domain == 'upi':
+                future_days = min(30, max(7, int(total_range * 0.1))) # Shorter window for UPI
+            else:
+                future_days = min(90, max(30, int(total_range * 0.25)))
         
         logger.info(f"📊 Training split: {total_range} day range, using {future_days}-day label window")
         
@@ -900,10 +948,16 @@ class AnalyticsEngine:
         # Join custom numeric features (taking the latest/first value per user)
         if custom_numeric_cols:
             custom_features = past_df.groupby('user_id')[custom_numeric_cols].first()
+            # ── Defensive Join ──
+            # Only join columns that don't already exist in train_rfm
+            overlap = [c for c in custom_features.columns if c in train_rfm.columns]
+            if overlap:
+                custom_features = custom_features.drop(columns=overlap)
             train_rfm = train_rfm.join(custom_features)
         
         # Calculate derived behavioral features
         temp_df = past_df[['user_id', 'timestamp']].sort_values(['user_id', 'timestamp'])
+
         temp_df['diff'] = temp_df.groupby('user_id')['timestamp'].diff().dt.days
         ipi_data = temp_df.groupby('user_id')['diff'].agg(
             ipi_median='median',
@@ -1571,7 +1625,9 @@ class AnalyticsEngine:
         df_top = df[df[pcol].isin(top_products)].copy()
 
         seg_map = rfm_df[['user_id', 'segment']].drop_duplicates()
-        merged = df_top.merge(seg_map, on='user_id', how='inner')
+        # ── Defensive Merge ──
+        df_top = df_top.loc[:, ~df_top.columns.duplicated()]
+        merged = df_top.merge(seg_map, on='user_id', how='inner', suffixes=('', '_seg'))
 
         ps = merged.groupby(['segment', pcol]).size().reset_index(name='count')
 
@@ -1582,7 +1638,8 @@ class AnalyticsEngine:
                 columns={pcol: 'product'}
             ).head(5).to_dict(orient='records')
 
-        overall_stats = df_top.merge(rfm_df[['user_id', 'churn_probability']], on='user_id', how='left')
+        # ── Defensive Merge ──
+        overall_stats = df_top.merge(rfm_df[['user_id', 'churn_probability']], on='user_id', how='left', suffixes=('', '_rfm'))
         baseline_churn = rfm_df['churn_probability'].mean()
         
         overall = []
@@ -1641,7 +1698,9 @@ class AnalyticsEngine:
         user_first = df.groupby('user_id')['order_month'].min().reset_index()
         user_first.columns = ['user_id', 'cohort']
 
-        df = df.merge(user_first, on='user_id')
+        # ── Defensive Merge ──
+        df = df.loc[:, ~df.columns.duplicated()]
+        df = df.merge(user_first, on='user_id', suffixes=('', '_first'))
 
         activity = df.groupby(['cohort', 'order_month'])['user_id'].nunique().reset_index()
         activity.columns = ['cohort', 'order_month', 'active']
@@ -1649,7 +1708,7 @@ class AnalyticsEngine:
         cohort_sizes = user_first.groupby('cohort')['user_id'].nunique().reset_index()
         cohort_sizes.columns = ['cohort', 'size']
 
-        activity = activity.merge(cohort_sizes, on='cohort')
+        activity = activity.merge(cohort_sizes, on='cohort', suffixes=('', '_size'))
         activity['period'] = (activity['order_month'] - activity['cohort']).apply(lambda x: x.n)
         activity['retention'] = activity['active'] / activity['size']
 
@@ -1666,12 +1725,13 @@ class AnalyticsEngine:
     # ────────────────────────────────────────────
     #  6. Data-Driven Hypotheses
     # ────────────────────────────────────────────
-    def generate_hypotheses(self, drivers, rfm_df):
+    def generate_hypotheses(self, drivers, rfm_df, metrics=None):
         """
         Generate testable hypotheses backed by real data statistics.
         Hypotheses are now dynamically selected based on the top churn drivers.
         """
         hypotheses = []
+        auc = metrics.get('roc_auc', 0.75) if metrics else 0.75
         risk_threshold = getattr(self, '_last_threshold', 0.5)
         high_churn = rfm_df[rfm_df['churn_probability'] >= risk_threshold]
         low_churn = rfm_df[rfm_df['churn_probability'] < risk_threshold]
@@ -1685,7 +1745,7 @@ class AnalyticsEngine:
                 'driver': 'Engagement',
                 'stat': f'Avg Churn: {avg_churn*100:.1f}%',
                 'impact': 'Medium',
-                'expected_lift_pct': round(min(15, max(3, avg_churn * 20)), 1)
+                'expected_lift_pct': round(min(18, max(2.5, avg_churn * 25)), 1)
             })
             return hypotheses
 
@@ -1711,7 +1771,7 @@ class AnalyticsEngine:
                 
                 ratio = rec_churn / max(rec_retain, 1)
                 # Realistic lift: capped at 15%
-                lift = round(min(12, max(3, (ratio - 1) * 2.5)), 1)
+                lift = round(min(14.5, max(2.8, (ratio - 1) * 3.2 * auc)), 1)
                 
                 hypotheses.append({
                     'title': f'The {display_feat} Hypothesis',
@@ -1734,7 +1794,7 @@ class AnalyticsEngine:
                 target_freq = int(max(freq_churn + 1, freq_churn * 1.25))
                 if is_tenure: target_freq = max(30, target_freq)
                 
-                lift = round(min(10.0, max(2.0, (target_freq / max(freq_churn, 1) - 1) * 6)), 1)
+                lift = round(min(11.2, max(1.8, (target_freq / max(freq_churn, 1) - 1) * 7.5 * auc)), 1)
                 
                 hypotheses.append({
                     'title': f'The {display_feat} Hypothesis',
@@ -1746,19 +1806,33 @@ class AnalyticsEngine:
                     'expected_lift_pct': lift
                 })
 
-            # ── H: Wallet Share / Monetary ──
+            # ── H: Wallet Share / Monetary / Velocity ──
             elif any(x in raw_feat for x in ['monetary', 'velocity', 'value', 'balance', 'amount', 'spend']):
-                val_churn = high_churn['monetary'].mean()
-                val_retain = low_churn['monetary'].mean()
-                target_val = val_churn * 1.20
-                lift = round(min(8.0, max(1.5, (target_val / max(val_churn, 1) - 1) * 10)), 1)
+                # CRITICAL FIX: Use the actual feature column if it exists, fallback to 'monetary'
+                # This prevents AOV or Velocity from incorrectly using raw Monetary stats.
+                col_match = next((c for c in rfm_df.columns if c.lower() == raw_feat.lower()), 'monetary')
                 
+                val_churn = high_churn[col_match].mean()
+                val_retain = low_churn[col_match].mean()
+                
+                # If the values are nearly identical, this isn't a strong discriminator
+                if abs(val_churn - val_retain) < (val_retain * 0.05):
+                    continue
+                    
+                target_val = val_churn * 1.20
+                lift = round(min(9.5, max(1.4, (target_val / max(val_churn, 1) - 1) * 12 * auc)), 1)
+                
+                # Format currency for monetary features
+                is_currency = any(x in raw_feat for x in ['monetary', 'velocity', 'amount', 'spend', 'value', 'balance'])
+                fmt_val = f"₹{int(val_churn):,}" if is_currency else f"{val_churn:.1f}"
+                fmt_target = f"₹{int(target_val):,}" if is_currency else f"{target_val:.1f}"
+
                 hypotheses.append({
                     'title': f'The {display_feat} Hypothesis',
-                    'hypothesis': f"Increasing {display_feat.lower()} from ₹{int(val_churn):,} to ₹{int(target_val):,} could stabilize high-risk accounts and improve retention by ~{lift}%.",
-                    'test': f'A/B Test: Cross-sell incentives for users in the ₹{int(val_churn):,} bracket.',
+                    'hypothesis': f"Increasing {display_feat.lower()} from {fmt_val} to {fmt_target} could stabilize high-risk accounts and improve retention by ~{lift}%.",
+                    'test': f"A/B Test: Cross-sell incentives for users in the {fmt_val} bracket.",
                     'driver': display_feat,
-                    'stat': f'Target: ₹{int(target_val):,}',
+                    'stat': f'Target: {fmt_target}',
                     'impact': 'Medium',
                     'expected_lift_pct': lift
                 })
@@ -1776,7 +1850,7 @@ class AnalyticsEngine:
                         
                         # Calculate the 'Efficiency Gap'
                         gap = abs(val_retain - val_churn) / max(abs(val_retain), 0.001)
-                        lift = round(min(12.0, max(3.0, gap * 18)), 1)
+                        lift = round(min(14.0, max(3.2, gap * 22 * auc)), 1)
                         
                         # ── Specialized Strategy Templates ──
                         if 'age' in f_key.lower():
@@ -1954,7 +2028,11 @@ def run_analysis(df):
     rfm_results, silhouette = eng.calculate_rfm(working)
     churn_results, drivers, metrics, shap_data = eng.predict_churn(working, rfm_results)
     lifecycle = eng.get_lifecycle_stages(working)
-    final_df = churn_results.merge(lifecycle, on='user_id', how='left')
+    # Drop potential collisions before merge
+    overlap = [c for c in lifecycle.columns if c in churn_results.columns and c != 'user_id']
+    if overlap:
+        lifecycle = lifecycle.drop(columns=overlap)
+    final_df = churn_results.merge(lifecycle, on='user_id', how='left', suffixes=('', '_lifecycle'))
 
     try:
         cohort_data = eng.build_cohort_matrix(working)
@@ -1968,7 +2046,7 @@ def run_analysis(df):
         "segments": final_df['segment'].value_counts().to_dict(),
         "lifecycle_stages": final_df['lifecycle'].value_counts().to_dict(),
         "top_drivers": drivers,
-        "hypotheses": eng.generate_hypotheses(drivers, final_df),
+        "hypotheses": eng.generate_hypotheses(drivers, final_df, metrics),
         "metrics": {"silhouette_score": float(silhouette), **metrics},
         "shap_data": shap_data,
         "segment_churn": eng.get_segment_churn(churn_results),

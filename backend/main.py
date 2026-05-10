@@ -24,14 +24,22 @@ _results_cache: dict = {}
 _demo_cache: dict | None = None
 _engine_cache: dict = {}  # store AnalyticsEngine instances per dataset
 _processing_status: dict = {} # Track currently processing files to prevent duplicate work
+_active_dataset_key: str | None = None # Track the dataset currently being viewed
 _cache_lock = threading.Lock() # Lock for cache and status updates
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, "datasets")
 
 # ── Configuration Constants ──
-MAX_ROWS = 65000
+# Render/Cloud has strict 512MB RAM limits, local machine usually has more.
+IS_CLOUD = os.environ.get('RENDER') is not None or os.environ.get('IS_CLOUD') == '1'
+MAX_ROWS = 65000 if IS_CLOUD else 1_000_000 
 MIN_USERS_TO_KEEP = 100
+
+if IS_CLOUD:
+    logger.info("☁️ Cloud environment detected. Memory Guard active (65k rows).")
+else:
+    logger.info("💻 Local environment detected. Memory Guard relaxed (1M rows).")
 
 
 # ──────────────────────────────────────
@@ -39,74 +47,327 @@ MIN_USERS_TO_KEEP = 100
 # ──────────────────────────────────────
 def _read_file(path: str) -> pd.DataFrame:
     if path.endswith('.csv'):
-        return pd.read_csv(path, encoding='ISO-8859-1')
+        # PRODUCTION FIX: Use robust multi-encoding detection for local files 
+        # to match the upload logic and handle BOM/special characters consistently.
+        for enc in ['utf-8-sig', 'utf-8', 'ISO-8859-1']:
+            try:
+                # Use engine='python' and sep=None to auto-detect delimiters
+                return pd.read_csv(path, encoding=enc, sep=None, engine='python')
+            except Exception:
+                continue
+        raise ValueError(f"Could not read CSV '{path}' with any encoding.")
     elif path.endswith('.xlsx'):
         return pd.read_excel(path)
-    raise ValueError(f"Unsupported: {path}")
+    raise ValueError(f"Unsupported format: {path}")
 
+
+import difflib
+
+def _fuzzy_match(target: str, candidates: list, threshold: float = 0.8) -> str | None:
+    """Enhanced fuzzy matcher using SequenceMatcher and normalized overlap."""
+    t_norm = target.lower().replace(' ', '').replace('_', '')
+    
+    best_match = None
+    best_score = 0
+    
+    for cand in candidates:
+        c_norm = cand.lower().replace(' ', '').replace('_', '')
+        
+        # 1. Exact normalized match (highest priority)
+        if t_norm == c_norm:
+            return cand
+            
+        # 2. Sequence Similarity
+        score = difflib.SequenceMatcher(None, t_norm, c_norm).ratio()
+        if score > best_score:
+            best_score = score
+            best_match = cand
+            
+        # 3. Substring match for clear terms
+        if len(t_norm) > 3 and (t_norm in c_norm or c_norm in t_norm):
+            if best_score < 0.9: # Boost substring matches
+                best_score = 0.9
+                best_match = cand
+
+    return best_match if best_score >= threshold else None
+
+
+def _detect_domain(df: pd.DataFrame) -> str:
+    """Detect the business domain of the dataset based on column signatures.
+    
+    Uses normalized column names (lowercase, no underscores/spaces) to match
+    against known domain fingerprints. Checks are ordered from most specific
+    to least specific to avoid false positives.
+    """
+    cols_raw = [str(c).lower().strip() for c in df.columns]
+    cols_norm = [c.replace('_', '').replace(' ', '') for c in cols_raw]
+    # Also check raw (with underscores) for exact matches like 'payer_vpa'
+    all_sigs = set(cols_norm) | set(cols_raw)
+    
+    # 1. UPI / Fintech Transactional — very specific signals
+    upi_sigs = [
+        'txnid', 'txn_id', 'sendervpa', 'sender_vpa', 'receivervpa', 'receiver_vpa',
+        'rrn', 'upiid', 'upi_id', 'vpa', 'responsecode', 'response_code',
+        'payername', 'payer_name', 'payeename', 'payee_name', 'senderupiid',
+        'payervpa', 'payer_vpa', 'payeevpa', 'payee_vpa', 'payeruserid',
+        'payer_user_id', 'mcc', 'failurereason', 'failure_reason',
+    ]
+    if sum(1 for s in upi_sigs if s in all_sigs) >= 2:
+        return "upi"
+    
+    # 2. Tax / Compliance (Form 26AS)
+    tax_sigs = [
+        'pan', 'fy', 'incomehead', 'income_head', 'tdsamountinr', 'tds_amount_inr',
+        'deductortan', 'deductor_tan', 'section', 'grossamount', 'gross_amount',
+        'dateofcredit', 'date_of_credit', 'taxableincome', 'taxable_income',
+        'grossamountinr', 'gross_amount_inr', 'deductorname', 'deductor_name',
+    ]
+    if sum(1 for s in tax_sigs if s in all_sigs) >= 2:
+        return "tax"
+    
+    # 3. Bank Churn (Summary / Kaggle style)
+    churn_sigs = [
+        'exited', 'creditscore', 'credit_score', 'estimatedsalary', 'estimated_salary',
+        'numofproducts', 'num_of_products', 'hascrcard', 'has_cr_card',
+        'isactivemember', 'is_active_member', 'tenure', 'balance', 'churnflag',
+        'churn_flag', 'churn', 'churned', 'attrition',
+    ]
+    if sum(1 for s in churn_sigs if s in all_sigs) >= 2:
+        return "bank_churn"
+    
+    # 4. Retail / E-commerce Transactional
+    retail_sigs = [
+        'invoice', 'invoiceno', 'invoice_no', 'stockcode', 'stock_code',
+        'invoicedate', 'invoice_date', 'customerid', 'customer_id',
+        'unitprice', 'unit_price', 'quantity',
+    ]
+    if sum(1 for s in retail_sigs if s in all_sigs) >= 2:
+        return "retail"
+        
+    return "generic"
+
+
+def _prepare_data_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Entry point for data preparation. Detects domain and routes to specific logic."""
+    domain = _detect_domain(df)
+    logger.info(f"🔍 Domain detected: {domain.upper()}")
+    
+    if domain == "upi":
+        return _prepare_upi_df(df)
+    elif domain == "tax":
+        return _prepare_tax_df(df)
+    elif domain == "bank_churn":
+        return _prepare_bank_churn_df(df)
+    else:
+        # Default to retail logic as it's the most flexible for transactional data
+        return _prepare_retail_df(df)
+
+
+def _prepare_upi_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Specialized preparation for UPI/Fintech transaction data.
+    
+    Uses direct column-name lookups (case-insensitive) instead of fuzzy
+    matching so that uploads from the browser produce identical results
+    to reading from the local datasets/ folder.
+    """
+    # Direct, deterministic mapping: {target_name: [possible_source_names]}
+    # We check lowercase versions of actual column names for reliability.
+    col_lower_map = {str(c).lower().strip(): c for c in df.columns}
+    
+    rename = {}
+    # user_id
+    for candidate in ['payer_user_id', 'user_id', 'sender_vpa', 'vpa', 'upi_id', 'customer_id', 'payer_vpa']:
+        if candidate in col_lower_map and 'user_id' not in rename.values():
+            rename[col_lower_map[candidate]] = 'user_id'
+            break
+    # timestamp
+    for candidate in ['ts', 'txn_date', 'timestamp', 'txn_time', 'date', 'created_at', 'time_stamp']:
+        if candidate in col_lower_map and 'timestamp' not in rename.values():
+            rename[col_lower_map[candidate]] = 'timestamp'
+            break
+    # amount
+    for candidate in ['amount_inr', 'amount', 'txn_amount', 'transaction_amount', 'value']:
+        if candidate in col_lower_map and 'amount' not in rename.values():
+            rename[col_lower_map[candidate]] = 'amount'
+            break
+    # description
+    for candidate in ['payee_name', 'receiver_name', 'merchant', 'description', 'txn_type', 'remarks']:
+        if candidate in col_lower_map and 'description' not in rename.values():
+            rename[col_lower_map[candidate]] = 'description'
+            break
+    # status
+    for candidate in ['status', 'response_code', 'result']:
+        if candidate in col_lower_map and 'status' not in rename.values():
+            rename[col_lower_map[candidate]] = 'status'
+            break
+    
+    logger.info(f"UPI column mapping: {rename}")
+    df = df.rename(columns=rename)
+    
+    # UPI Specific: Churn is often defined by 'FAILURE' patterns or drop in successful txns
+    if 'status' in df.columns:
+        df['is_failure'] = df['status'].astype(str).str.upper().isin(['FAILURE', 'FAILED', 'ERR', '0']).astype(int)
+        
+    df['domain'] = 'upi'
+    return _prepare_retail_df(df) # Reuse common cleaning logic
+
+
+def _prepare_tax_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Specialized preparation for Tax/Income data (Form 26AS).
+    
+    Uses direct column-name lookups for reliable mapping.
+    """
+    col_lower_map = {str(c).lower().strip(): c for c in df.columns}
+    
+    rename = {}
+    for candidate in ['user_id', 'pan', 'tan', 'customer_id']:
+        if candidate in col_lower_map and 'user_id' not in rename.values():
+            rename[col_lower_map[candidate]] = 'user_id'
+            break
+    for candidate in ['date_of_credit', 'date_of_payment', 'timestamp', 'date', 'credit_date', 'payment_date']:
+        if candidate in col_lower_map and 'timestamp' not in rename.values():
+            rename[col_lower_map[candidate]] = 'timestamp'
+            break
+    for candidate in ['gross_amount_inr', 'gross_amount', 'amount', 'income', 'taxable_income']:
+        if candidate in col_lower_map and 'amount' not in rename.values():
+            rename[col_lower_map[candidate]] = 'amount'
+            break
+    for candidate in ['deductor_name', 'income_head', 'description', 'section']:
+        if candidate in col_lower_map and 'description' not in rename.values():
+            rename[col_lower_map[candidate]] = 'description'
+            break
+    
+    logger.info(f"TAX column mapping: {rename}")
+    df = df.rename(columns=rename)
+    
+    # Tax Specific: Frequency is usually low (quarterly/monthly)
+    # We mark it so the analytics engine doesn't penalize low frequency
+    df['domain'] = 'tax'
+    return _prepare_retail_df(df)
+
+
+def _prepare_bank_churn_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Specialized preparation for Bank Churn (Summary) data.
+    
+    Uses direct column-name lookups for reliable mapping.
+    """
+    col_lower_map = {str(c).lower().strip(): c for c in df.columns}
+    
+    rename = {}
+    for candidate in ['customerid', 'customer_id', 'user_id', 'id']:
+        if candidate in col_lower_map and 'user_id' not in rename.values():
+            rename[col_lower_map[candidate]] = 'user_id'
+            break
+    for candidate in ['exited', 'churn', 'churned', 'churn_flag', 'is_churn', 'attrition']:
+        if candidate in col_lower_map and 'target_churn' not in rename.values():
+            rename[col_lower_map[candidate]] = 'target_churn'
+            break
+    
+    logger.info(f"BANK_CHURN column mapping: {rename}")
+    df = df.rename(columns=rename)
+    
+    df['domain'] = 'bank_churn'
+    return _prepare_retail_df(df)
 
 def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     """Normalise various retail formats into the standard internal schema."""
-    # 1. Flexible Column Mapping
-    column_variants = {
-        'user_id': ['Customer ID', 'CustomerID', 'Customer_ID', 'User ID', 'user', 'id', 'user_id', 'customer_id', 'payer_user_id', 'UID', 'Account'],
-        'timestamp': ['InvoiceDate', 'Date', 'timestamp', 'time', 'Order Date', 'date', 'Invoice Date', 'date_of_credit', 'ts', 'txn_date', 'CreatedAt'],
-        'amount': ['Price', 'Total', 'Amount', 'revenue', 'sum', 'amount', 'Total Price', 'TotalPrice', 'gross_amount_inr', 'amount_inr', 'TransactionAmount'],
-        'unit_price': ['Price', 'UnitPrice', 'Unit Price', 'price', 'unit_price'],
-        'quantity': ['Quantity', 'Qty', 'quantity', 'Quantity']
-    }
-    
-    # Apply mapping
-    current_cols = {c.lower().replace(' ', '').replace('_', ''): c for c in df.columns}
-    found_mapping = {}
-    
-    for target, variants in column_variants.items():
-        if target in found_mapping.values(): continue
-        for v in variants:
-            v_norm = v.lower().replace(' ', '').replace('_', '')
-            if v_norm in current_cols:
-                found_mapping[current_cols[v_norm]] = target
-                break
-    
-    if found_mapping:
-        df = df.rename(columns=found_mapping)
-
-    # ── Universal Fuzzy Mapping (Enterprise Grade) ──
+    # 1. Flexible Column Mapping (Comprehensive Dictionary)
     mapping_dictionary = {
-        'user_id': ['userid', 'customerid', 'clientid', 'id', 'user', 'uid', 'account_number', 'member_id', 'customer_id', 'payer_user_id'],
-        'monetary': ['balance', 'amount', 'total_spend', 'revenue', 'monetary', 'value', 'transaction_value', 'spend', 'wallet_balance', 'gross_amount_inr', 'amount_inr'],
-        'frequency': ['frequency', 'orders', 'numofproducts', 'products_number', 'transaction_count', 'purchase_count', 'order_count', 'txn_count'],
-        'tenure_months': ['tenure', 'account_age', 'membership_duration', 'months_active', 'customer_since'],
-        'target_churn': ['exited', 'churn', 'churned', 'is_churn', 'left', 'attrition', 'churn_flag', 'target_churn'],
-        'is_active': ['isactivemember', 'active', 'is_active', 'active_member', 'engagement_flag'],
-        'credit_score': ['creditscore', 'credit_rating', 'score', 'credit_worthiness'],
-        'monetary_velocity': ['estimated_salary', 'income', 'daily_spend', 'velocity']
+        'user_id': ['userid', 'customerid', 'clientid', 'id', 'user', 'uid', 'account_number', 'member_id', 'customer_id', 'payer_user_id', 'UID', 'Account', 'VPA', 'UPI ID', 'PAN', 'Payer Name', 'Payer', 'PayerUser_ID', 'sender_vpa', 'upi_id'],
+        'timestamp': ['InvoiceDate', 'Date', 'timestamp', 'time', 'Order Date', 'date', 'Invoice Date', 'date_of_credit', 'ts', 'txn_date', 'CreatedAt', 'Date of Payment', 'Payment Date', 'Transaction Date', 'CreditDate', 'date_of_payment', 'txn_time', 'time_stamp'],
+        'amount': ['Price', 'Total', 'Amount', 'revenue', 'sum', 'amount', 'Total Price', 'TotalPrice', 'gross_amount_inr', 'amount_inr', 'TransactionAmount', 'Transaction Amount', 'TDS Amount', 'Credit', 'Debit', 'payment_amount', 'net_amount', 'gross_amount', 'txn_amount', 'transaction_amount', 'deposit', 'withdrawal', 'value'],
+        'monetary': ['balance', 'amount', 'total_spend', 'revenue', 'monetary', 'value', 'transaction_value', 'spend', 'wallet_balance', 'gross_amount_inr', 'amount_inr', 'net_worth', 'wallet', 'funds', 'capital', 'current_balance'],
+        'unit_price': ['Price', 'UnitPrice', 'Unit Price', 'price', 'unit_price', 'rate'],
+        'quantity': ['Quantity', 'Qty', 'quantity', 'count', 'units'],
+        'frequency': ['frequency', 'orders', 'numofproducts', 'products_number', 'transaction_count', 'purchase_count', 'order_count', 'txn_count', 'NumOfProducts'],
+        'tenure_months': ['tenure', 'account_age', 'membership_duration', 'months_active', 'customer_since', 'Tenure'],
+        'target_churn': ['exited', 'churn', 'churned', 'is_churn', 'left', 'attrition', 'churn_flag', 'target_churn', 'Exited', 'is_churned'],
+        'is_active': ['isactivemember', 'active', 'is_active', 'active_member', 'engagement_flag', 'IsActiveMember'],
+        'credit_score': ['creditscore', 'credit_rating', 'score', 'credit_worthiness', 'CreditScore', 'cibil_score'],
+        'monetary_velocity': ['estimated_salary', 'income', 'daily_spend', 'velocity', 'EstimatedSalary', 'annual_income'],
+        'description': ['Description', 'description', 'Product', 'product', 'ProductDescription', 'payee_name', 'merchant', 'receiver_name', 'txn_type', 'remarks']
     }
-
-    for target, variations in mapping_dictionary.items():
-        if target in found_mapping.values(): continue 
+    
+    current_cols = list(df.columns)
+    found_mapping = {}
+    used_candidates = set()
+    
+    # CRITICAL: Skip mapping for columns that domain-specific preparers already mapped.
+    # This prevents double-mapping bugs where e.g. 'user_id' gets re-mapped to 'monetary'.
+    already_mapped = {'user_id', 'timestamp', 'amount', 'description', 'status'}
+    for col in already_mapped:
+        if col in current_cols:
+            used_candidates.add(col)  # mark as "taken" so fuzzy won't steal it
+    
+    # Priority 1: Exact/Normalized matches for primary keys (skip if already present)
+    for target in ['user_id', 'timestamp', 'amount']:
+        if target in current_cols:
+            continue  # Already mapped by domain-specific preparer
+        variations = [target] + mapping_dictionary.get(target, [])
         for var in variations:
-            v_norm = var.lower().replace(' ', '').replace('_', '')
-            if v_norm in current_cols:
-                found_mapping[current_cols[v_norm]] = target
+            match = _fuzzy_match(var, current_cols, threshold=0.95)
+            if match and match not in used_candidates:
+                found_mapping[match] = target
+                used_candidates.add(match)
                 break
+
+    # Priority 2: Fuzzy matches for everything else (skip already-present targets)
+    for target, variations in mapping_dictionary.items():
+        if target in found_mapping.values(): continue
+        if target in current_cols: continue  # Already present from domain-specific prep
+        
+        all_vars = [target] + variations
+        best_cand = None
+        best_score = 0
+        
+        for var in all_vars:
+            match = _fuzzy_match(var, current_cols, threshold=0.8)
+            if match and match not in used_candidates:
+                # We want the best match among variations
+                score = difflib.SequenceMatcher(None, var.lower(), match.lower()).ratio()
+                if score > best_score:
+                    best_score = score
+                    best_cand = match
+        
+        if best_cand:
+            found_mapping[best_cand] = target
+            used_candidates.add(best_cand)
     
     if found_mapping:
         df = df.rename(columns=found_mapping)
+        
+        # PRODUCTION FIX: Explicitly coerce all mapped columns to numeric
+        # This ensures that columns like 'credit_score' or 'tenure' are treated 
+        # as features by the analytics engine instead of being ignored as 'object' types.
+        numeric_targets = [
+            'monetary', 'unit_price', 'quantity', 'frequency', 
+            'tenure_months', 'is_active', 'credit_score', 'monetary_velocity'
+        ]
+        for target in numeric_targets:
+            if target in df.columns:
+                df[target] = pd.to_numeric(df[target], errors='coerce').fillna(0)
+
+        # Ensure semantic aliases are filled if only one exists
         if 'monetary' in df.columns and 'amount' not in df.columns:
             df['amount'] = df['monetary']
+        elif 'amount' in df.columns and 'monetary' not in df.columns:
+            df['monetary'] = df['amount']
+            
         if 'user_id' in df.columns and 'customer_id' not in df.columns:
             df['customer_id'] = df['user_id']
+        elif 'customer_id' in df.columns and 'user_id' not in df.columns:
+            df['user_id'] = df['customer_id']
 
     # ── Target Churn Normalization ──
     if 'target_churn' in df.columns:
         # Convert strings/bools to 0/1
         if df['target_churn'].dtype == object or df['target_churn'].dtype == bool:
             # Map common positive labels to 1
-            pos_labels = ['yes', 'true', '1', 'exited', 'churned', 'churn', 'left', 'attrition']
-            df['target_churn'] = df['target_churn'].astype(str).str.lower().isin(pos_labels).astype(int)
+            pos_labels = ['yes', 'true', '1', 'exited', 'churned', 'churn', 'left', 'attrition', '1.0']
+            df['target_churn'] = df['target_churn'].astype(str).str.lower().str.strip().isin(pos_labels).astype(int)
         else:
             df['target_churn'] = pd.to_numeric(df['target_churn'], errors='coerce').fillna(0).astype(int)
+
 
     # 2. Description column for Product Mix
     desc_cols = ['Description', 'description', 'Product', 'product', 'ProductDescription', 'payee_name', 'merchant', 'receiver_name']
@@ -141,7 +402,13 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
             logger.warning(f"Datetime conversion fallback: {e}")
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
 
-        df = df.dropna(subset=['timestamp'])
+
+        # Only drop if we have actual timestamp data to work with
+        if df['timestamp'].notna().any():
+            df = df.dropna(subset=['timestamp'])
+        else:
+            # If column exists but is all NaT, treat as if it's not there to allow summary data fallback
+            df = df.drop(columns=['timestamp'])
 
     # 4. Amount normalization
     if 'amount' not in df.columns and 'unit_price' in df.columns and 'quantity' in df.columns:
@@ -156,7 +423,8 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     # We synthesize realistic transaction histories from the summary.
     _is_summary_data = 'timestamp' not in df.columns and 'tenure_months' in df.columns
     if _is_summary_data:
-        now = pd.Timestamp.now()
+        # Use a fixed reference date for deterministic synthetic generation
+        now = pd.Timestamp('2024-05-10')
         raw_tenure = pd.to_numeric(df['tenure_months'], errors='coerce').fillna(1)
         # Tenure normalization: values 0-25 are likely years, else months
         if raw_tenure.max() <= 25:
@@ -258,7 +526,21 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     potential_recovery = eng.get_potential_recovery(churn_results, metrics)
 
     # Merge
-    final_df = churn_results.merge(lifecycle, on='user_id', how='left')
+    # ── PRODUCTION GUARD: Defensive Merge ──
+    # Standardize column names and deduplicate to prevent 'columns overlap' errors
+    churn_results = churn_results.loc[:, ~churn_results.columns.duplicated()]
+    lifecycle = lifecycle.loc[:, ~lifecycle.columns.duplicated()]
+    
+    # Drop any potential collisions from lifecycle that are already in churn_results
+    overlap = [c for c in lifecycle.columns if c in churn_results.columns and c != 'user_id']
+    if overlap:
+        lifecycle = lifecycle.drop(columns=overlap)
+    
+    final_df = churn_results.merge(
+        lifecycle, 
+        on='user_id', 
+        how='left'
+    )
     # Force de-duplication of any colliding columns (segment_x/y etc)
     final_df = final_df.loc[:, ~final_df.columns.duplicated()]
 
@@ -333,23 +615,38 @@ def _build_synthetic_demo_df(n_users: int = 500, seed: int = 42) -> pd.DataFrame
     Used only as a resilient fallback when no local dataset exists.
     """
     rng = np.random.default_rng(seed)
-    start_date = pd.Timestamp("2024-01-01")
+    base = pd.Timestamp("2024-01-01")
     rows = []
 
     for uid in range(1, n_users + 1):
-        tx_count = int(rng.integers(3, 22))
-        for _ in range(tx_count):
-            days_offset = int(rng.integers(0, 480))
-            amount = float(max(25.0, rng.normal(1200.0, 650.0)))
-            rows.append({
-                "user_id": str(uid),
-                "timestamp": (start_date + pd.Timedelta(days=days_offset)).strftime("%Y-%m-%d"),
-                "amount": round(amount, 2),
-                "description": rng.choice(["Wallet Top-up", "Bill Pay", "Investment", "Insurance", "Premium Plan"])
-            })
+        # Add a subtle behavioral signal: users with even IDs have higher frequency
+        # and more recent transactions, making them less likely to churn.
+        is_loyal = (uid % 2 == 0)
+        n_tx = int(rng.integers(10, 40)) if is_loyal else int(rng.integers(2, 8))
+        
+        for _ in range(n_tx):
+            # Loyal users have transactions spread across the year, including very recent ones.
+            # Churn-prone users have transactions clustered in the past.
+            if is_loyal:
+                days_ago = int(rng.integers(0, 365))
+            else:
+                days_ago = int(rng.integers(60, 365)) # Not seen in last 60 days
+                
+            amount = round(float(rng.uniform(10, 5000)), 2)
+            rows.append(
+                {
+                    "user_id": str(uid),
+                    "timestamp": (base + pd.Timedelta(days=days_ago)).strftime(
+                        "%Y-%m-%d"
+                    ),
+                    "amount": amount,
+                    "description": rng.choice(
+                        ["purchase", "transfer", "topup", "withdrawal"]
+                    ),
+                }
+            )
 
     df = pd.DataFrame(rows)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
     return df.dropna(subset=["timestamp"])
 
 
@@ -368,7 +665,7 @@ def _warmup_dataset(fname):
     try:
         t0 = time.time()
         df = _read_file(fpath)
-        df = _prepare_retail_df(df)
+        df = _prepare_data_df(df)
         
         # Memory Guard: Removed sampling to support full dataset analysis
         # Only filtering for required columns now
@@ -453,8 +750,10 @@ async def list_datasets():
 
 @app.get("/analyze-local")
 async def analyze_local(filename: str = Query(...)):
+    global _active_dataset_key
     if filename in _results_cache:
         logger.info(f"⚡ Serving '{filename}' from cache")
+        _active_dataset_key = filename
         return _results_cache[filename]
 
     if filename == "all":
@@ -465,17 +764,19 @@ async def analyze_local(filename: str = Query(...)):
         raise HTTPException(status_code=404, detail=f"Not found: {filename}")
 
     df = _read_file(file_path)
-    df = _prepare_retail_df(df)
+    df = _prepare_data_df(df)
     required = ['user_id', 'timestamp', 'amount']
     if not all(c in df.columns for c in required):
         raise HTTPException(status_code=400, detail=f"Missing columns. Found: {list(df.columns)}")
 
     result = _process_dataframe(df, cache_key=filename)
     _results_cache[filename] = result
+    _active_dataset_key = filename
     return result
 
 
 async def _analyze_all_live():
+    global _active_dataset_key
     if not os.path.exists(DATASET_DIR):
         raise HTTPException(status_code=404, detail="Datasets directory not found")
     files = [f for f in os.listdir(DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
@@ -484,7 +785,7 @@ async def _analyze_all_live():
     all_dfs = []
     for f in files:
         df = _read_file(os.path.join(DATASET_DIR, f))
-        df = _prepare_retail_df(df)
+        df = _prepare_data_df(df)
         all_dfs.append(df)
     combined = pd.concat(all_dfs, ignore_index=True)
     dedupe_candidates = ['user_id', 'timestamp', 'amount']
@@ -497,17 +798,20 @@ async def _analyze_all_live():
         combined = combined.drop_duplicates(subset=existing_keys)
     result = _process_dataframe(combined, cache_key="all")
     _results_cache["all"] = result
+    _active_dataset_key = "all"
     return result
 
 
 @app.get("/demo-data")
 async def get_default_data():
     """Returns the first available dataset as the default dashboard data."""
+    global _active_dataset_key
     # 1. Check if any real dataset is already cached
     with _cache_lock:
         if _results_cache:
             first_key = list(_results_cache.keys())[0]
             logger.info(f"⚡ Serving '{first_key}' from cache")
+            _active_dataset_key = first_key
             return _results_cache[first_key]
 
     # 2. If nothing cached, check if anything is on disk
@@ -522,6 +826,7 @@ async def get_default_data():
         result["summary"]["is_synthetic_demo"] = True
         result["summary"]["source_note"] = "Generated fallback dataset (no local dataset files found)."
         _results_cache[synthetic_key] = result
+        _active_dataset_key = synthetic_key
         return result
 
     fname = files[0]
@@ -532,6 +837,7 @@ async def get_default_data():
     for _ in range(0, max_wait, wait_interval):
         with _cache_lock:
             if fname in _results_cache:
+                _active_dataset_key = fname
                 return _results_cache[fname]
             if _processing_status.get(fname) != "processing":
                 # Not being processed yet? Trigger it (shouldn't happen with warmup, but just in case)
@@ -559,6 +865,7 @@ async def get_default_data():
         result['summary']['is_sampled'] = True
         result['summary']['sample_size'] = sampled_rows
         result['summary']['total_source_rows'] = "Estimated 100k+" if original_len == 25000 else original_len
+        _active_dataset_key = f"demo_{fname}"
         return result
     except Exception as e:
         logger.error(f"Fallback processing failed: {e}")
@@ -567,35 +874,64 @@ async def get_default_data():
 
 @app.post("/analyze")
 async def analyze_data(file: UploadFile = File(...)):
+    global _active_dataset_key
     if not file.filename.endswith(('.csv', '.xlsx')):
         raise HTTPException(status_code=400, detail="Only CSV or XLSX files are supported.")
     
     contents = await file.read()
-    try:
-        if file.filename.endswith('.csv'):
-            df = pd.read_csv(io.BytesIO(contents), encoding='ISO-8859-1')
-        else:
+    
+    # Multi-encoding fallback for real-world files (BOM, UTF-8, Latin-1)
+    df = None
+    if file.filename.endswith('.csv'):
+        for enc in ['utf-8-sig', 'utf-8', 'ISO-8859-1']:
+            try:
+                df = pd.read_csv(io.BytesIO(contents), encoding=enc, sep=None, engine='python')
+                logger.info(f"CSV parsed OK with encoding={enc}, shape={df.shape}")
+                break
+            except Exception:
+                continue
+        if df is None:
+            raise HTTPException(status_code=400, detail="Could not read CSV with any encoding.")
+    else:
+        try:
             df = pd.read_excel(io.BytesIO(contents))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read file: {str(e)}")
-
-    df = _prepare_retail_df(df)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not read file: {str(e)}")
+    
+    # Log raw columns for debugging domain detection
+    logger.info(f"Upload '{file.filename}' raw columns: {list(df.columns)}")
+    
+    domain = _detect_domain(df)
+    logger.info(f"Upload '{file.filename}' detected domain: {domain.upper()}")
+    
+    df = _prepare_data_df(df)
+    
+    logger.info(f"Upload '{file.filename}' after prep columns: {sorted(list(df.columns))}")
+    
     required = ['user_id', 'timestamp', 'amount']
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise HTTPException(
             status_code=400, 
             detail=f"Missing required data columns: {missing}. Found: {list(df.columns)}. "
+                   f"Detected domain: {domain}. "
                    "Please ensure your file has Customer ID, Date, and Amount/Price columns."
         )
     
-    # Memory Guard: Removed sampling to support full dataset analysis
-    # Churn engine will handle scaling internally
+    # Use a unique cache key per uploaded file to avoid stale engine conflicts
+    cache_key = f"upload_{file.filename}_{int(time.time())}"
+    
     try:
-        return _process_dataframe(df, cache_key="upload")
+        result = _process_dataframe(df, cache_key=cache_key)
+        # Update active dataset key
+        _active_dataset_key = cache_key
+        # Also store under generic "upload" key so What-If/SHAP endpoints find the latest (legacy support)
+        _engine_cache["upload"] = _engine_cache.get(cache_key, {})
+        return result
     except Exception as e:
-        logger.error(f"Analysis failed for uploaded file: {e}")
-        # Provide a more helpful error message
+        logger.error(f"Analysis failed for uploaded file '{file.filename}': {e}")
+        import traceback
+        traceback.print_exc()
         detail = str(e)
         if "MemoryError" in detail:
             detail = "The dataset is too large for the server's RAM. Please try uploading a smaller CSV file."
@@ -608,12 +944,24 @@ async def analyze_data(file: UploadFile = File(...)):
 @app.get("/user-shap/{user_id}")
 async def get_user_shap(user_id: str):
     """Get local SHAP explanation for a specific user."""
+    global _active_dataset_key
     # Try all cached engines
     if not _engine_cache:
         logger.warning("⚠️ Engine cache is empty (likely due to restart).")
         raise HTTPException(status_code=503, detail="Server restarted. Please re-select or re-upload the dataset to activate SHAP explainer.")
         
+    # Check active dataset first
+    if _active_dataset_key and _active_dataset_key in _engine_cache:
+        cache = _engine_cache[_active_dataset_key]
+        eng = cache['engine']
+        rfm_df = cache['rfm_df']
+        result = eng.compute_user_shap(user_id, rfm_df)
+        if result:
+            return result
+            
     for key, cache in _engine_cache.items():
+        if key == _active_dataset_key:
+            continue
         eng = cache['engine']
         rfm_df = cache['rfm_df']
         result = eng.compute_user_shap(user_id, rfm_df)
@@ -628,11 +976,16 @@ async def get_user_shap(user_id: str):
 @app.post("/whatif")
 async def whatif_simulation(req: WhatIfRequest):
     """Run a what-if counterfactual simulation on a segment."""
+    global _active_dataset_key
     # Use most recent engine
-    if not _engine_cache:
-        raise HTTPException(status_code=400, detail="No data loaded yet. Load data first.")
+    if not _engine_cache or not _active_dataset_key or _active_dataset_key not in _engine_cache:
+        # Fallback to last if active dataset is somehow not set
+        if not _engine_cache:
+            raise HTTPException(status_code=400, detail="No data loaded yet. Load data first.")
+        key = list(_engine_cache.keys())[-1]
+    else:
+        key = _active_dataset_key
     
-    key = list(_engine_cache.keys())[-1]
     eng = _engine_cache[key]['engine']
     rfm_df = _engine_cache[key]['rfm_df']
     
@@ -648,12 +1001,17 @@ async def whatif_simulation(req: WhatIfRequest):
 @app.get("/llm-hypotheses")
 async def get_llm_hypotheses():
     """Generate LLM-powered business hypotheses from cached analysis."""
+    global _active_dataset_key
     if not _engine_cache:
         await get_default_data()
     if not _engine_cache:
         raise HTTPException(status_code=503, detail="No data loaded yet. Please load a dataset first.")
     
-    key = list(_engine_cache.keys())[-1]
+    if _active_dataset_key and _active_dataset_key in _engine_cache:
+        key = _active_dataset_key
+    else:
+        key = list(_engine_cache.keys())[-1]
+        
     eng = _engine_cache[key]['engine']
     rfm_df = _engine_cache[key]['rfm_df']
     
@@ -675,10 +1033,15 @@ async def get_llm_hypotheses():
 @app.get("/interventions")
 async def get_interventions():
     """Generate dynamic, data-driven interventions per segment."""
+    global _active_dataset_key
     if not _engine_cache:
         raise HTTPException(status_code=400, detail="No data loaded yet.")
 
-    key = list(_engine_cache.keys())[-1]
+    if _active_dataset_key and _active_dataset_key in _engine_cache:
+        key = _active_dataset_key
+    else:
+        key = list(_engine_cache.keys())[-1]
+        
     eng = _engine_cache[key]['engine']
     rfm_df = _engine_cache[key]['rfm_df']
 

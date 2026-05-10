@@ -169,7 +169,14 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
         <div style={{ position: 'absolute', top: 0, right: 0, width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(99,102,241,0.03) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
         {/* Header */}
-        <div className="exec-header" style={{ padding: '2rem 2.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
+        <div className="exec-header" style={{ 
+          padding: '2rem 2.5rem', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+          borderBottom: '1px solid rgba(255,255,255,0.1)' 
+        }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
             <div style={{ 
               background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
@@ -181,16 +188,16 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
               <LayoutDashboard size={28} />
             </div>
             <div>
-              <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.04em', margin: 0, color: '#0f172a' }}>
+              <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.04em', margin: 0, color: '#ffffff' }}>
                 Executive Intelligence Dashboard
               </h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: '#64748b', fontWeight: 600, marginTop: '0.2rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600, marginTop: '0.2rem' }}>
                 <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
                   Live System Active
                 </span>
-                <span>•</span>
-                <span style={{ color: '#0f172a' }}>{totalUsers.toLocaleString()} High-Value Profiles Analyzed</span>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>•</span>
+                <span style={{ color: '#ffffff', opacity: 0.9 }}>{totalUsers.toLocaleString()} High-Value Profiles Analyzed</span>
                 {s?.metrics?.roc_auc > 0.75 && (
                   <span style={{ 
                     fontSize: '0.65rem', fontWeight: 900, color: '#10b981', 
@@ -644,6 +651,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                    {[
                      { term: 'Churn Risk', def: 'Likelihood a user leaves in 30 days.' },
                      { term: 'Capital at Stake', def: 'Revenue lost if at-risk users churn.' },
+                     { term: 'Revenue Retention', def: 'The portion of revenue kept by preventing churn.' },
                      { term: 'SHAP Logic', def: 'The specific behavior causing the risk.' },
                      { term: 'Optimal Threshold', def: 'The AI\'s "sweet spot" for accuracy.' },
                    ].map((g, i) => (
@@ -695,10 +703,11 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                                <span><strong>Execution Plan:</strong> {h.test || h.action}</span>
                             </div>
                             {h.expected_lift_pct && (
-                              <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <FormulaTooltip formula="Projected Lift = (Behavioral Gap x Model Confidence). This represents the percentage of 'At-Risk' revenue we expect to save by implementing this specific strategy." color="#10b981"><div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'help' }}>
                                  <TrendingUp size={12} /> Projected Recovery: +{h.expected_lift_pct}% Revenue Retention
                               </div>
-                            )}
+                            </FormulaTooltip>
+                          )}
                          </div>
 
                          <div 

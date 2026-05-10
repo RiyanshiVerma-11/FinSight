@@ -29,9 +29,19 @@ def _make_transactions(n_users: int = 200, seed: int = 42) -> pd.DataFrame:
 
     rows = []
     for uid in range(1, n_users + 1):
-        n_tx = int(rng.integers(3, 30))
+        # Add a subtle behavioral signal: users with even IDs have higher frequency
+        # and more recent transactions, making them less likely to churn.
+        is_loyal = (uid % 2 == 0)
+        n_tx = int(rng.integers(10, 40)) if is_loyal else int(rng.integers(2, 8))
+        
         for _ in range(n_tx):
-            days_ago = int(rng.integers(0, 365))
+            # Loyal users have transactions spread across the year, including very recent ones.
+            # Churn-prone users have transactions clustered in the past.
+            if is_loyal:
+                days_ago = int(rng.integers(0, 365))
+            else:
+                days_ago = int(rng.integers(60, 365)) # Not seen in last 60 days
+                
             amount = round(float(rng.uniform(10, 5000)), 2)
             rows.append(
                 {
