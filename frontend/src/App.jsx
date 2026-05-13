@@ -7,10 +7,21 @@ import {
 import {
   Users, TrendingDown, TrendingUp, Lightbulb,
   Upload, Activity, ShieldAlert, ShieldCheck, CheckCircle, RefreshCw,
-  Database, Target, Sparkles, Download,
+  Database, Target, Download,
   FlaskConical, ShoppingBag, CalendarRange, Brain,
-  DollarSign, Zap, FileText, LayoutDashboard, Award, AlertTriangle
+  DollarSign, Zap, FileText, LayoutDashboard, Award, AlertTriangle, Sparkles
 } from 'lucide-react';
+import { motion } from 'framer-motion';
+
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import ShapModal from './components/ShapModal';
+import WhatIfPanel from './components/WhatIfPanel';
+import LiveTicker from './components/LiveTicker';
+import ExecutiveDashboard from './components/ExecutiveDashboard';
+import InterventionEngine from './components/InterventionEngine';
+import FormulaTooltip from './components/FormulaTooltip';
+import ActiveExperiments from './components/ActiveExperiments';
 
 const Info = (props) => (
   <svg 
@@ -28,16 +39,6 @@ const Info = (props) => (
     <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
   </svg>
 );
-import { motion } from 'framer-motion';
-import { Joyride, STATUS } from 'react-joyride';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
-import ShapModal from './components/ShapModal';
-import WhatIfPanel from './components/WhatIfPanel';
-import LiveTicker from './components/LiveTicker';
-import ExecutiveDashboard from './components/ExecutiveDashboard';
-import InterventionEngine from './components/InterventionEngine';
-import FormulaTooltip from './components/FormulaTooltip';
 
 let API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 if (API_URL && !API_URL.startsWith('http')) {
@@ -84,12 +85,12 @@ const formatCurrency = (val) => {
 
 const segmentToPersona = (seg) => {
   const personas = {
-    'Champions': 'Power Shopper',
-    'Loyalists': 'Brand Advocate',
-    'Promising': 'Early Adopter',
-    'At Risk': 'Slipping Fan',
-    'Hibernating': 'Lost Opportunity',
-    'Needs Attention': 'Drifting User',
+    'Champions': 'The Loyal Giant',
+    'Loyalists': 'The Steady Pillar',
+    'Promising': 'The Rising Star',
+    'At Risk': 'The Fading Star',
+    'Hibernating': 'The Lost Soul',
+    'Needs Attention': 'The Drifting User',
     'New': 'Onboarding'
   };
   return personas[seg] || seg;
@@ -190,6 +191,7 @@ const getROIStatus = (u) => {
 
 
 function App() {
+  console.log("FinSight App Mounting...");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -198,42 +200,21 @@ function App() {
   const [shapUser, setShapUser] = useState(null);
   const [llmHypotheses, setLlmHypotheses] = useState(null);
   const [llmLoading, setLlmLoading] = useState(false);
-  const [tourVersion, setTourVersion] = useState(0);
+
   const [activeTab, setActiveTab] = useState('executive');
   const [error, setError] = useState(null);
   const [globalSimResult, setGlobalSimResult] = useState(null);
+  const [dataFetched, setDataFetched] = useState(false);
 
-  const [{ runTour, tourSteps }, setTourState] = useState({
-    runTour: false,
-    tourSteps: [
-      { target: '.tour-dataset', title: 'Data Integration', content: 'Select a dataset or use Demo Data.', disableBeacon: true, placement: 'bottom' },
-      { target: '.tour-stats', title: 'Performance Snapshot', content: 'High-level metrics overview.', disableBeacon: true, placement: 'bottom' },
-      { target: '.tour-segments', title: 'Segmentation Intelligence', content: 'User distribution across segments.', disableBeacon: true, placement: 'right' },
-      { target: '.tour-shap', title: 'AI Explainability', content: 'Feature importance via SHAP values.', disableBeacon: true, placement: 'bottom' },
-      { target: '.tour-whatif', title: 'Simulation Engine', content: 'Run counterfactual simulations.', disableBeacon: true, placement: 'bottom' },
-      { target: '.tour-hypotheses', title: 'Actionable Insights', content: 'Data-driven churn reduction strategies.', disableBeacon: true, placement: 'bottom' },
-      { target: '.tour-cohort', title: 'Cohort Analysis', content: 'Analyze retention over time.', disableBeacon: true, placement: 'top' },
-      { target: '.tour-ltv', title: 'Predicted LTV', content: 'Forecasted lifetime value of users.', disableBeacon: true, placement: 'top' }
-    ]
-  });
-
-  const handleJoyrideCallback = (data) => {
-    const { status, type, index } = data;
-    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
-      setTourState(prev => ({ ...prev, runTour: false }));
+  useEffect(() => {
+    fetchDatasets();
+    if (!data && !dataFetched) {
+      fetchDemoData();
+      setDataFetched(true);
     }
-    if (type === 'step:before') {
-      if (index >= 1 && index <= 2) setActiveTab('overview');
-      else if (index === 3) setActiveTab('explainability');
-      else if (index >= 4 && index <= 5) setActiveTab('simulation');
-      else if (index >= 6) setActiveTab('users');
-    }
-  };
+  }, []);
 
-  const startTour = () => {
-    setTourVersion(v => v + 1);
-    setTourState(prev => ({ ...prev, runTour: true }));
-  };
+
 
   const fetchDatasets = async () => {
     try { setDatasets((await axios.get(`${API_URL}/list-datasets`)).data.datasets || []); }
@@ -255,7 +236,7 @@ function App() {
         setError("The analytics engine is taking longer than usual to warm up. Please wait a moment and try clicking 'Demo Data' again.");
       }
     } finally {
-      if (retryCount >= 2 || !loading) setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -339,9 +320,10 @@ function App() {
     }
   };
 
-  useEffect(() => { fetchDemoData(); fetchDatasets(); }, []);
-
-  if (loading) return (
+  console.log("App Render Pass - loading:", loading, "data:", !!data, "error:", !!error);
+  if (loading) {
+    console.log("Rendering Loader...");
+    return (
     <div className="app-container">
       <div className="loader-container" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
         <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}>
@@ -354,6 +336,7 @@ function App() {
       </div>
     </div>
   );
+}
 
   const s = data?.summary;
   const segmentData = s?.segments ? Object.entries(s.segments).map(([name, value]) => ({ name, value })) : [];
@@ -366,34 +349,17 @@ function App() {
   const totalUsers = s?.total_users || 0;
   const { high: riskThreshold, critical: criticalThreshold } = getRiskThresholds(s);
 
-  let currentChurnRisk = s?.avg_churn_risk || 0;
+  let currentChurnRisk = s?.baseline_churn_rate || s?.avg_churn_risk || 0;
   if (globalSimResult && totalUsers > 0) {
     const churnDecrease = (globalSimResult.original_churn - globalSimResult.simulated_churn) * globalSimResult.users_affected / totalUsers;
     currentChurnRisk -= churnDecrease;
   }
   const churnPct = (currentChurnRisk * 100).toFixed(1);
 
+  console.log("Rendering Main UI - data is present:", !!data);
   return (
     <div className="app-container">
-      <Joyride
-        key={tourVersion}
-        steps={tourSteps}
-        run={runTour}
-        continuous={true}
-        showSkipButton={true}
-        showProgress={true}
-        spotlightClicks={true}
-        disableScrolling={false}
-        scrollOffset={100}
-        scrollDuration={200}
-        scrollIntoViewOptions={{ block: 'start', inline: 'nearest' }}
-        disableScrollParentFix={false}
-        floaterProps={{ disableAnimation: true }}
-        callback={handleJoyrideCallback}
-        styles={{
-          options: { primaryColor: '#6366f1', zIndex: 10000 }
-        }}
-      />
+
       <ShapModal userId={shapUser} onClose={() => setShapUser(null)} />
 
       <header className="header">
@@ -403,7 +369,7 @@ function App() {
           <span className="version-badge">v3.0</span>
         </div>
         <div className="controls-row tour-dataset">
-          <button className="btn-primary" onClick={startTour}><Sparkles size={17} /> Start Tour</button>
+
           <select className="select-dataset" id="dataset-selector" value={selectedDataset} onChange={handleDatasetChange}>
             <option value="">Select Local Dataset</option>
             {datasets?.map(ds => <option key={ds} value={ds}>{ds}</option>)}
@@ -469,13 +435,14 @@ function App() {
           {[
             { id: 'executive', label: 'Executive View', icon: Award },
             { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+            { id: 'experiments', label: 'Active Experiments', icon: FlaskConical },
             { id: 'explainability', label: 'Explainability & Models', icon: Brain },
             { id: 'simulation', label: 'Simulation & Interventions', icon: Zap },
             { id: 'users', label: 'Cohorts & Users', icon: Users }
           ].map(tab => {
             const Icon = tab.icon;
             return (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              <button key={tab.id} id={`tab-${tab.id}`} onClick={() => setActiveTab(tab.id)}
                 className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', background: activeTab === tab.id ? 'var(--bg-card)' : 'transparent', border: 'none', borderBottom: activeTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent', color: activeTab === tab.id ? 'var(--primary)' : 'var(--text-secondary)', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer', borderRadius: '0.5rem 0.5rem 0 0', transition: 'all 0.2s ease', whiteSpace: 'nowrap' }}>
                 <Icon size={18} /> {tab.label}
@@ -528,7 +495,7 @@ function App() {
                   <span><strong>Test:</strong> {h.test}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>DRIVEN BY: {h.driver.toUpperCase()}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>DRIVEN BY: {h.driver?.toUpperCase() || 'UNKNOWN'}</span>
                   <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--accent-emerald)' }}>{h.stat}</span>
                 </div>
               </motion.div>
@@ -575,7 +542,7 @@ function App() {
 
               <div className="tour-segments" style={{ gridColumn: 'span 8' }}>
                 <Section span={12} delay={0} initial={false}>
-                  <h2><Sparkles size={20} style={{ color: '#6366f1' }} /> User Segmentation Intelligence</h2>
+                  <h2><Activity size={20} style={{ color: '#6366f1' }} /> User Segmentation Intelligence</h2>
                   <div className="chart-wrapper" style={{ background: 'transparent' }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={segmentData}>
@@ -678,8 +645,8 @@ function App() {
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={shapData.map(s => ({ ...s, shap_val: +(s.importance || 0).toFixed(4) }))} layout="vertical">
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                        <XAxis type="number" />
-                        <YAxis type="category" dataKey="feature" width={100} />
+                        <XAxis type="number" tick={{ fontSize: 11 }} />
+                        <YAxis type="category" dataKey="feature" width={180} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />
                         <Tooltip content={<CustomTooltip />} />
                         <Bar dataKey="shap_val" radius={[0, 6, 6, 0]}>
                           {shapData.map((s, i) => <Cell key={i} fill={s.direction === 'increases_churn' ? '#f43f5e' : '#10b981'} />)}
@@ -690,128 +657,8 @@ function App() {
                 </Section>
               </div>
 
-              {/* ── Global Feature Interaction (SHAP) ── */}
-              <Section span={6} delay={0.25} className="tour-shap-interaction" initial={false}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
-                  <Brain size={20} style={{ color: '#ec4899' }} />
-                  <h2 style={{ margin: 0 }}>Behavioral Risk Interaction</h2>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'linear-gradient(135deg,#ec4899,#8b5cf6)', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '1rem' }}>SHAP Dependence</span>
-                </div>
-                {(() => {
-                  const top2 = (s?.top_drivers || []).slice(0, 2);
-                  const f1 = top2[0] || { feature: 'Spending Engagement', raw_feature: 'monetary' };
-                  const f2 = top2[1] || { feature: 'Customer Tenure', raw_feature: 'account_age_days' };
-                  const users = data?.users || [];
-                  const isSampled = users.length < (s?.total_users || 0);
 
-                  const toNum = (v) => {
-                    const n = Number(v);
-                    return Number.isFinite(n) ? n : null;
-                  };
 
-                  const inferFeatureKey = (driver) => {
-                    const userKeys = users.length ? Object.keys(users[0]) : [];
-                    const raw = driver?.raw_feature;
-
-                    const candidates = [];
-                    if (raw) {
-                      candidates.push(raw);
-                      if (raw.endsWith('_raw')) candidates.push(raw.replace('_raw', ''));
-                      else candidates.push(`${raw}_raw`);
-                    }
-
-                    const label = String(driver?.feature || '').toLowerCase();
-                    if (label.includes('frequency') || label.includes('order count')) {
-                      candidates.push('frequency', 'frequency_raw');
-                    } else if (label.includes('spending') || label.includes('wallet') || label.includes('monetary')) {
-                      candidates.push('monetary', 'amount', 'monetary_raw');
-                    } else if (label.includes('recency') || label.includes('delay')) {
-                      candidates.push('recency', 'recency_deviation');
-                    } else if (label.includes('tenure') || label.includes('account age')) {
-                      candidates.push('account_age_days', 'tenure');
-                    } else if (label.includes('velocity')) {
-                      candidates.push('monetary_velocity');
-                    }
-
-                    for (const key of candidates) {
-                      if (!key || !userKeys.includes(key)) continue;
-                      const vals = users.map(u => toNum(u[key])).filter(v => v !== null);
-                      const uniq = new Set(vals.map(v => v.toFixed(4))).size;
-                      if (uniq > 3) return key;
-                    }
-
-                    const numericKeys = userKeys.filter(k => {
-                      if (['churn_probability', 'revenue_at_risk', 'predicted_ltv', 'priority_score'].includes(k)) return false;
-                      const vals = users.map(u => toNum(u[k])).filter(v => v !== null);
-                      const uniq = new Set(vals.map(v => v.toFixed(4))).size;
-                      return uniq > 3;
-                    });
-
-                    return numericKeys[0] || raw || 'monetary';
-                  };
-
-                  const xKey = inferFeatureKey(f1);
-                  const yKey = inferFeatureKey(f2);
-                  const step = Math.max(1, Math.floor(users.length / 150));
-                  const sampleUsers = users.filter((_, i) => i % step === 0).slice(0, 150);
-                  const interactionPoints = sampleUsers.map(u => ({
-                    user_id: u.user_id,
-                    x: toNum(u[xKey]) ?? 0,
-                    y: toNum(u[yKey]) ?? 0,
-                    churn: toNum(u.churn_probability) ?? 0
-                  })).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
-
-                  return (
-                    <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginTop: '-0.75rem', marginBottom: '1rem' }}>
-                        <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0, lineHeight: 1.5, flex: 1 }}>
-                          {f1.feature} × {f2.feature} Interaction: Analyzing how the top two behavioral signals correlate to predict systemic churn risk.
-                          <br />
-                          <strong style={{ color: '#475569' }}>Strategic Interpretation:</strong> Each point represents a user from a diversified sample. <strong style={{ color: '#f43f5e' }}>Red dots</strong> indicate critical risk clusters.
-                        </p>
-                        {isSampled && (
-                          <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)', whiteSpace: 'nowrap' }}>
-                            <Activity size={10} style={{ marginRight: '0.2rem' }} /> SAMPLED VIEW (150 users)
-                          </div>
-                        )}
-                      </div>
-                      <div className="chart-wrapper" style={{ padding: '0.5rem', height: 250 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                            <XAxis type="number" dataKey="x" name={f1.feature} tick={{ fontSize: 11 }} />
-                            <YAxis type="number" dataKey="y" name={f2.feature} tick={{ fontSize: 11 }} />
-                            <ZAxis type="number" dataKey="churn" range={[40, 400]} name="Churn Risk" />
-                            <Tooltip cursor={{ strokeDasharray: '3 3' }}
-                              content={({ active, payload }) => {
-                                if (active && payload && payload.length) {
-                                  return (
-                                    <div style={{ background: '#fff', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '0.8rem' }}>
-                                      <p><strong>{f1.feature}:</strong> {typeof payload[0].value === 'number' ? payload[0].value.toLocaleString() : payload[0].value}</p>
-                                      <p><strong>{f2.feature}:</strong> {typeof payload[1].value === 'number' ? payload[1].value.toLocaleString() : payload[1].value}</p>
-                                      <p><strong>Churn Risk:</strong> {(payload[2].value * 100).toFixed(1)}%</p>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
-                            />
-                            <Scatter name="Users" data={interactionPoints}>
-                              {interactionPoints.map((u, index) => {
-                                const churn = u.churn || 0;
-                                return <Cell key={`cell-${index}`} fill={churn >= criticalThreshold ? '#f43f5e' : churn >= riskThreshold ? '#f59e0b' : '#10b981'} />;
-                              })}
-                            </Scatter>
-                          </ScatterChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#64748b', fontWeight: 700 }}>
-                        Feature mapping: X = <span style={{ color: '#334155' }}>{xKey}</span> · Y = <span style={{ color: '#334155' }}>{yKey}</span>
-                      </div>
-                    </>
-                  );
-                })()}
-              </Section>
 
               {/* ── Top 3 Global Churn Drivers ── */}
               <Section span={6} delay={0.3}>
@@ -821,51 +668,86 @@ function App() {
                   <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'linear-gradient(135deg,#f43f5e,#f59e0b)', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '1rem' }}>SHAP</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {(s?.top_drivers || []).slice(0, 3).map((d, i) => {
-                    const isIncrease = d.direction === 'increases_churn';
-                    const pct = ((d.importance || 0) * 100).toFixed(1);
-                    const barColor = isIncrease ? '#f43f5e' : '#10b981';
-                    return (
-                      <motion.div key={i} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
-                        style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>
-                            {d.feature}
-                          </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: barColor, fontWeight: 700 }}>
-                              {isIncrease ? '⚠️ High values cause churn' : '⚠️ Drops cause churn'}
+                  {(() => {
+                    const topDrivers = (s?.top_drivers || []).slice(0, 3);
+                    const maxImportance = Math.max(...topDrivers.map(d => d.importance || 0), 0.01);
+                    const domain = s?.domain || 'generic';
+                    return topDrivers.map((d, i) => {
+                      const isIncrease = d.direction === 'increases_churn';
+                      const pct = ((d.importance || 0) * 100).toFixed(1);
+                      const barPct = Math.round(((d.importance || 0) / maxImportance) * 100);
+                      const barColor = isIncrease ? '#f43f5e' : '#10b981';
+                      
+                      // Domain-aware strategic insights
+                      const getInsight = () => {
+                        const feat = d.feature;
+                        const raw = (d.raw_feature || '').toLowerCase();
+                        if (domain === 'tax') {
+                          if (raw.includes('frequency') || raw.includes('payment'))
+                            return isIncrease 
+                              ? `Higher filing/payment frequency correlates with multi-deductor complexity. Users with many TDS entries may be facing compliance fatigue, increasing churn risk.`
+                              : `Declining payment frequency signals reduced tax activity through the platform. Users may be switching to competitors or direct filing.`;
+                          if (raw.includes('monetary') || raw.includes('income') || raw.includes('amount'))
+                            return isIncrease
+                              ? `High-income users are paradoxically more likely to churn — they have more options and higher expectations. Premium retention strategies are needed.`
+                              : `Declining taxable income flow through the platform indicates users are diverting income reporting elsewhere.`;
+                          if (raw.includes('recency'))
+                            return `Time since last tax credit/filing is a strong churn predictor. Users who haven't engaged recently during the filing season are at high risk of permanent attrition.`;
+                        }
+                        if (domain === 'upi') {
+                          if (raw.includes('frequency'))
+                            return isIncrease
+                              ? `Unusually high transaction frequency can indicate fraud-testing patterns or account-sharing, both of which precede account abandonment.`
+                              : `Declining UPI usage frequency is the #1 churn signal. Users are likely switching to competing payment apps (GPay, PhonePe, Paytm).`;
+                          if (raw.includes('monetary') || raw.includes('amount') || raw.includes('spent'))
+                            return isIncrease
+                              ? `Higher spending via UPI correlates with churn when combined with service issues — high-value users have lower tolerance for failures.`
+                              : `Declining transaction value signals users are routing larger payments through alternative channels.`;
+                          if (raw.includes('ipi') || raw.includes('cycle'))
+                            return `Purchase cycle irregularity indicates behavioral disruption. Consistent users who suddenly change their payment timing are showing early churn signals.`;
+                        }
+                        // Generic fallback
+                        return isIncrease
+                          ? `Elevated ${feat} shows statistical correlation with churn in the model. This feature contributes ${pct}% to the AI's churn prediction decision.`
+                          : `Declining ${feat} is an early-warning signal. This behavioral shift contributes ${pct}% to the model's risk assessment.`;
+                      };
+
+                      return (
+                        <motion.div key={i} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.1 }}
+                          style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)', maxWidth: '60%' }}>
+                              {d.feature}
                             </span>
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.1rem' }}>
-                                AI Decision Weight
-                              </div>
-                              <div style={{ fontWeight: 900, color: barColor, fontSize: '1.1rem', lineHeight: 1 }}>
-                                {pct}%
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <span style={{ fontSize: '0.7rem', color: barColor, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                {isIncrease ? '⚠️ High → churn' : '📉 Drop → churn'}
+                              </span>
+                              <div style={{ textAlign: 'right', minWidth: '55px' }}>
+                                <div style={{ fontSize: '0.5rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.1rem' }}>
+                                  SHAP Weight
+                                </div>
+                                <div style={{ fontWeight: 900, color: barColor, fontSize: '1.1rem', lineHeight: 1 }}>
+                                  {pct}%
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                        <div style={{ height: 10, background: 'var(--bg-input)', borderRadius: 5, overflow: 'hidden', marginBottom: '0.2rem' }}>
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pct}%` }}
-                            transition={{ delay: 0.2 + i * 0.1, duration: 0.9, ease: 'easeOut' }}
-                            style={{ height: '100%', background: `linear-gradient(90deg, ${barColor}88, ${barColor})`, borderRadius: 5, boxShadow: `0 0 10px ${barColor}40` }}
-                          />
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, background: 'rgba(0,0,0,0.02)', padding: '0.5rem 0.75rem', borderRadius: '0.4rem', borderLeft: `3px solid ${barColor}`, lineHeight: 1.4 }}>
-                          {(() => {
-                            const isIncrease = d.direction === 'increases_churn';
-                            if (isIncrease) {
-                              return <span><strong>Strategic Insight:</strong> Elevated levels of <strong>{d.feature}</strong> show a strong statistical correlation with churn. This typically indicates behavioral friction or a shift in user sentiment that requires immediate monitoring.</span>;
-                            }
-                            return <span><strong>Strategic Insight:</strong> A downward trend in <strong>{d.feature}</strong> is a critical early-warning signal. In our models, this decline often precedes a total lapse in engagement, suggesting a need for proactive re-activation.</span>;
-                          })()}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
+                          <div style={{ height: 10, background: 'var(--bg-input)', borderRadius: 5, overflow: 'hidden', marginBottom: '0.2rem' }}>
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${barPct}%` }}
+                              transition={{ delay: 0.2 + i * 0.1, duration: 0.9, ease: 'easeOut' }}
+                              style={{ height: '100%', background: `linear-gradient(90deg, ${barColor}88, ${barColor})`, borderRadius: 5, boxShadow: `0 0 10px ${barColor}40` }}
+                            />
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, background: 'rgba(0,0,0,0.02)', padding: '0.5rem 0.75rem', borderRadius: '0.4rem', borderLeft: `3px solid ${barColor}`, lineHeight: 1.4 }}>
+                            <span><strong>Strategic Insight:</strong> {getInsight()}</span>
+                          </div>
+                        </motion.div>
+                      );
+                    });
+                  })()}
                 </div>
               </Section>
 
@@ -943,16 +825,16 @@ function App() {
                       {(() => {
                         const cm = s?.metrics?.confusion_matrix;
                         return [
-                          { label: 'TP', val: cm ? `${cm.tp_rate}%` : '—', sub: 'Churn Detection Recall', detail: `Recall: ${cm?.recall || 0}%`, color: '#10b981' },
-                          { label: 'FP', val: cm ? `${cm.fp_rate}%` : '—', sub: 'False Pos.', detail: `FPR: ${cm?.fp_rate || 0}%`, color: '#f59e0b' },
-                          { label: 'FN', val: cm ? `${cm.fn_rate}%` : '—', sub: 'False Neg.', detail: `FNR: ${cm?.fn_rate || 0}%`, color: '#f43f5e' },
-                          { label: 'TN', val: cm ? `${cm.tn_rate}%` : '—', sub: 'True Neg.', detail: `Spec: ${cm?.specificity || 0}%`, color: '#6366f1' }
+                          { label: 'Correct Churn Detection', val: cm ? `${cm.tp_rate}%` : '—', sub: 'True Positive (TP)', detail: `Recall: ${cm?.recall || 0}%`, color: '#10b981' },
+                          { label: 'False Alarms', val: cm ? `${cm.fp_rate}%` : '—', sub: 'False Positive (FP)', detail: `FPR: ${cm?.fp_rate || 0}%`, color: '#f59e0b' },
+                          { label: 'Missed Churners', val: cm ? `${cm.fn_rate}%` : '—', sub: 'False Negative (FN)', detail: `FNR: ${cm?.fn_rate || 0}%`, color: '#f43f5e' },
+                          { label: 'Correct Retentions', val: cm ? `${cm.tn_rate}%` : '—', sub: 'True Negative (TN)', detail: `Spec: ${cm?.specificity || 0}%`, color: '#6366f1' }
                         ];
                       })().map((m, i) => (
                         <div key={i} style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '0.6rem', border: '1px dashed var(--border)' }}>
-                          <div style={{ fontSize: '0.9rem', fontWeight: 900, color: m.color }}>{m.val}</div>
-                          <div style={{ fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-primary)' }}>{m.sub}</div>
-                          <div style={{ fontSize: '0.45rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.detail}</div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 900, color: m.color, marginBottom: '0.2rem' }}>{m.val}</div>
+                          <div style={{ fontSize: '0.55rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2, marginBottom: '0.2rem' }}>{m.label}</div>
+                          <div style={{ fontSize: '0.45rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.sub}</div>
                         </div>
                       ))}
                     </div>
@@ -967,72 +849,7 @@ function App() {
                 </div>
               </Section>
 
-              {/* ── Segment Risk-Value Portfolio (The New Section) ── */}
-              <Section span={6} delay={0.4} initial={false}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
-                  <Target size={22} style={{ color: '#8b5cf6' }} />
-                  <h2 style={{ margin: 0 }}>Segment Risk-Value Portfolio</h2>
-                  <span className="version-badge" style={{ background: '#8b5cf6' }}>STRATEGIC</span>
-                </div>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '-0.75rem', marginBottom: '1.25rem' }}>
-                  High-value segments in the top-right quadrant require immediate white-glove retention interventions.
-                </p>
-                <div className="chart-wrapper" style={{ height: 270 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 10 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis type="number" dataKey="value" name="Avg LTV" unit="₹" tick={{ fontSize: 11 }} />
-                      <YAxis type="number" dataKey="risk" name="Avg Risk" unit="%" tick={{ fontSize: 11 }} />
-                      <ZAxis type="number" dataKey="count" range={[150, 800]} name="Users" />
-                      <Tooltip cursor={{ strokeDasharray: '3 3' }}
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            return (
-                              <div style={{ background: '#fff', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '10px', boxShadow: 'var(--shadow-md)' }}>
-                                <p style={{ fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>{payload[0].payload.name}</p>
-                                <p style={{ fontSize: '0.75rem', color: '#6366f1' }}>Avg LTV: ₹{payload[0].value.toLocaleString()}</p>
-                                <p style={{ fontSize: '0.75rem', color: '#f43f5e' }}>Avg Risk: {payload[1].value}%</p>
-                                <p style={{ fontSize: '0.75rem', color: '#64748b' }}>Users: {payload[2].value}</p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Scatter name="Segments" data={segChurn.map((s, i) => ({
-                        segment: s.segment,
-                        name: segmentToPersona(s.segment),
-                        value: Math.round(s.avg_monetary || 0),
-                        risk: Math.round((s.avg_churn || 0) * 100),
-                        count: s.count || 0
-                      }))}>
-                        {segChurn.map((entry, index) => {
-                          const isGiant = entry.segment === 'At Risk' || entry.segment === 'Hibernating';
-                          return (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={SEGMENT_COLORS[entry.segment] || CHART_COLORS[index % CHART_COLORS.length]}
-                              stroke={isGiant ? '#f43f5e' : 'none'}
-                              strokeWidth={isGiant ? 3 : 0}
-                              style={isGiant ? { filter: 'drop-shadow(0px 0px 8px rgba(244,63,94,0.6))' } : { opacity: 0.5 }}
-                            />
-                          );
-                        })}
-                      </Scatter>
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </div>
-                <div style={{ marginTop: '1rem', padding: '0.85rem', background: 'var(--bg-input)', borderRadius: '0.75rem', border: '1px dashed var(--border)', fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                    <Lightbulb size={14} style={{ color: '#f59e0b' }} />
-                    <strong style={{ color: 'var(--text-primary)' }}>Strategic Insight</strong>
-                  </div>
-                  <span>
-                    Segments in the <strong>bottom-right</strong> (High LTV, Low Risk) are your most stable revenue pillars.
-                    Those in the <strong>top-right</strong> (High LTV, High Risk) are "At Risk Giants" and require immediate executive intervention.
-                  </span>
-                </div>
-              </Section>
+
             </>
           )}
 
@@ -1040,14 +857,14 @@ function App() {
             <>
               <div style={{ gridColumn: 'span 12' }}>
                 <Section span={12} delay={0} className="tour-whatif" initial={false}>
-                  <WhatIfPanel segments={s?.segments} segChurn={segChurn} onSimulationResult={setGlobalSimResult} />
+                  <WhatIfPanel segments={s?.segments} segChurn={segChurn} domain={s?.domain} onSimulationResult={setGlobalSimResult} />
                 </Section>
               </div>
 
               {/* ── Intervention Engine ── */}
               <div style={{ gridColumn: 'span 12' }}>
                 <Section span={12} delay={0} initial={false}>
-                  <InterventionEngine segments={s?.segments} segChurn={segChurn} metrics={s?.metrics} />
+                  <InterventionEngine segments={s?.segments} segChurn={segChurn} metrics={s?.metrics} domain={s?.domain} />
                 </Section>
               </div>
 
@@ -1310,6 +1127,14 @@ function App() {
                 </Section>
               </div>
             </>
+          )}
+
+          {activeTab === 'experiments' && (
+            <div style={{ gridColumn: 'span 12' }}>
+              <Section span={12} delay={0} initial={false}>
+                <ActiveExperiments hypotheses={s?.hypotheses} segments={s?.segments} metrics={s?.metrics} />
+              </Section>
+            </div>
           )}
         </motion.div>
       )}

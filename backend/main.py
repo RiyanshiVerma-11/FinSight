@@ -9,9 +9,9 @@ import logging
 import json
 import asyncio
 from services.analytics import AnalyticsEngine
-from services.data_generator import generate_event
+from services.data_generator import generate_event, set_user_pool
 from services.llm_engine import generate_llm_hypotheses, generate_llm_interventions
-from schemas import WhatIfRequest
+from schemas import WhatIfRequest, ROIExplainRequest
 import numpy as np
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -223,6 +223,7 @@ def _prepare_tax_df(df: pd.DataFrame) -> pd.DataFrame:
     """Specialized preparation for Tax/Income data (Form 26AS).
     
     Uses direct column-name lookups for reliable mapping.
+    Adds tax-specific features for better churn prediction.
     """
     col_lower_map = {str(c).lower().strip(): c for c in df.columns}
     
@@ -247,8 +248,36 @@ def _prepare_tax_df(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"TAX column mapping: {rename}")
     df = df.rename(columns=rename)
     
-    # Tax Specific: Frequency is usually low (quarterly/monthly)
-    # We mark it so the analytics engine doesn't penalize low frequency
+    # ── Tax-Specific Feature Engineering ──
+    # TDS rate: ratio of tax deducted to gross amount (engagement signal)
+    if 'tds_amount_inr' in col_lower_map:
+        tds_col = col_lower_map['tds_amount_inr']
+        if tds_col in df.columns:
+            df['tds_amount'] = pd.to_numeric(df[tds_col], errors='coerce').fillna(0)
+            if 'amount' in df.columns:
+                df['tds_rate'] = df['tds_amount'] / (pd.to_numeric(df['amount'], errors='coerce').fillna(1).clip(lower=1))
+    
+    # Income head diversity per user (more diverse = more engaged)
+    if 'income_head' in col_lower_map:
+        ih_col = col_lower_map['income_head']
+        if ih_col in df.columns and 'user_id' in df.columns:
+            income_diversity = df.groupby('user_id')[ih_col].nunique().rename('income_diversity')
+            df = df.merge(income_diversity, on='user_id', how='left')
+    
+    # Section diversity (194A, 194B, etc.)
+    if 'section' in col_lower_map:
+        sec_col = col_lower_map['section']
+        if sec_col in df.columns and 'user_id' in df.columns:
+            section_count = df.groupby('user_id')[sec_col].nunique().rename('section_count')
+            df = df.merge(section_count, on='user_id', how='left')
+    
+    # Quarter activity (how many quarters the user was active)
+    if 'quarter' in col_lower_map:
+        q_col = col_lower_map['quarter']
+        if q_col in df.columns and 'user_id' in df.columns:
+            quarter_activity = df.groupby('user_id')[q_col].nunique().rename('quarters_active')
+            df = df.merge(quarter_activity, on='user_id', how='left')
+    
     df['domain'] = 'tax'
     return _prepare_retail_df(df)
 
@@ -256,7 +285,9 @@ def _prepare_tax_df(df: pd.DataFrame) -> pd.DataFrame:
 def _prepare_bank_churn_df(df: pd.DataFrame) -> pd.DataFrame:
     """Specialized preparation for Bank Churn (Summary) data.
     
-    Uses direct column-name lookups for reliable mapping.
+    Generates realistic synthetic transactions that preserve the variance of
+    original features (CreditScore, Age, Balance, EstimatedSalary) while
+    creating enough temporal signal for the RFM pipeline.
     """
     col_lower_map = {str(c).lower().strip(): c for c in df.columns}
     
@@ -269,12 +300,104 @@ def _prepare_bank_churn_df(df: pd.DataFrame) -> pd.DataFrame:
         if candidate in col_lower_map and 'target_churn' not in rename.values():
             rename[col_lower_map[candidate]] = 'target_churn'
             break
+    for candidate in ['tenure', 'tenure_months']:
+        if candidate in col_lower_map and 'tenure_months' not in rename.values():
+            rename[col_lower_map[candidate]] = 'tenure_months'
+            break
+    for candidate in ['balance']:
+        if candidate in col_lower_map and 'amount' not in rename.values():
+            rename[col_lower_map[candidate]] = 'amount'
+            break
+    for candidate in ['numofproducts', 'num_of_products']:
+        if candidate in col_lower_map and 'frequency' not in rename.values():
+            rename[col_lower_map[candidate]] = 'frequency'
+            break
+    
+    # Preserve original feature columns with clean names
+    preserve_map = {
+        'creditscore': 'credit_score',
+        'credit_score': 'credit_score',
+        'estimatedsalary': 'estimated_salary',
+        'estimated_salary': 'estimated_salary',
+        'isactivemember': 'is_active',
+        'is_active_member': 'is_active',
+        'hascrcard': 'has_cr_card',
+        'has_cr_card': 'has_cr_card',
+        'age': 'age',
+        'geography': 'geography',
+        'gender': 'gender',
+    }
+    for lower_name, target in preserve_map.items():
+        if lower_name in col_lower_map and target not in rename.values():
+            orig_col = col_lower_map[lower_name]
+            if orig_col not in rename:
+                rename[orig_col] = target
     
     logger.info(f"BANK_CHURN column mapping: {rename}")
     df = df.rename(columns=rename)
     
+    # Coerce numeric columns
+    for col in ['credit_score', 'estimated_salary', 'is_active', 'has_cr_card', 'age', 'amount']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    # For users with Balance=0, use EstimatedSalary/12 as monthly amount proxy
+    if 'amount' in df.columns and 'estimated_salary' in df.columns:
+        df['amount'] = df['amount'].where(df['amount'] > 0, df['estimated_salary'] / 12).clip(lower=100)
+    
+    # ── SYNTHETIC TRANSACTION GENERATION (Churn-Aware) ──
+    # Generate more transactions per user with VARIANCE so the model can learn
+    # behavioural patterns that correlate with the churn label.
+    now = pd.Timestamp('2024-05-10')
+    rng = np.random.default_rng(42)
+    
+    raw_tenure = pd.to_numeric(df.get('tenure_months', pd.Series([6]*len(df), index=df.index)), errors='coerce').fillna(6)
+    if raw_tenure.max() <= 25:
+        actual_months = (raw_tenure * 12).clip(lower=6)
+    else:
+        actual_months = raw_tenure.clip(lower=6)
+    df['tenure_months'] = actual_months
+    
+    # Generate 8-15 txns per user (more than before) with temporal clustering
+    # Churned users get fewer recent transactions (activity decline signal)
+    is_churned = df.get('target_churn', pd.Series([0]*len(df), index=df.index)).astype(int)
+    
+    expanded_rows = []
+    for idx, row in df.iterrows():
+        tenure_days = max(int(actual_months.get(idx, 6) * 30), 60)
+        n_txns = rng.integers(8, 16)
+        churned = int(is_churned.get(idx, 0))
+        base_amount = float(row.get('amount', 100))
+        
+        for t in range(n_txns):
+            new_row = row.copy()
+            if churned and t >= n_txns // 2:
+                # Churned users: last half of txns are older (activity decline)
+                offset = rng.integers(tenure_days // 2, tenure_days)
+            else:
+                # Active users: transactions spread more evenly with recent bias
+                offset = rng.integers(1, tenure_days)
+            new_row['timestamp'] = now - pd.Timedelta(days=int(offset))
+            # Add amount variance so monetary features have discriminative power
+            new_row['amount'] = max(10.0, base_amount / n_txns * rng.uniform(0.5, 2.0))
+            expanded_rows.append(new_row)
+    
+    df = pd.DataFrame(expanded_rows)
+    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+    df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(100)
+    df['_is_summary'] = True
+    logger.info(f"📊 Bank Churn: {len(expanded_rows)} synthetic transactions ({len(expanded_rows)//len(is_churned)} per user avg)")
+    
     df['domain'] = 'bank_churn'
-    return _prepare_retail_df(df)
+    
+    # Skip the generic _prepare_retail_df summary expansion (we already did it)
+    # But still need its cleaning logic
+    # Remove the 'tenure_months' column temporarily to prevent double-expansion
+    _saved_tenure = df['tenure_months'].copy()
+    df = df.drop(columns=['tenure_months'])
+    result = _prepare_retail_df(df)
+    result['tenure_months'] = _saved_tenure.values[:len(result)] if len(_saved_tenure) >= len(result) else 0
+    return result
 
 def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     """Normalise various retail formats into the standard internal schema."""
@@ -300,8 +423,11 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
     used_candidates = set()
     
     # CRITICAL: Skip mapping for columns that domain-specific preparers already mapped.
-    # This prevents double-mapping bugs where e.g. 'user_id' gets re-mapped to 'monetary'.
-    already_mapped = {'user_id', 'timestamp', 'amount', 'description', 'status'}
+    # This prevents double-mapping bugs where e.g. 'credit_score' gets re-mapped to 'monetary'.
+    already_mapped = {'user_id', 'timestamp', 'amount', 'description', 'status',
+                      'target_churn', 'credit_score', 'estimated_salary', 'is_active',
+                      'has_cr_card', 'age', 'tenure_months', 'frequency', 'domain',
+                      'geography', 'gender', 'customer_id'}
     for col in already_mapped:
         if col in current_cols:
             used_candidates.add(col)  # mark as "taken" so fuzzy won't steal it
@@ -576,6 +702,7 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     summary = {
         "total_users": int(final_df['user_id'].nunique()),
         "avg_churn_risk": float((final_df['churn_probability'] * final_df['monetary']).sum() / max(final_df['monetary'].sum(), 1)),
+        "baseline_churn_rate": float(final_df['churn_probability'].mean()),
         "data_health": eng._calculate_data_health(df),
         "segments": segments_dict,
         "lifecycle_stages": final_df['lifecycle'].value_counts().to_dict(),
@@ -595,6 +722,7 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
         "revenue_at_risk": revenue_at_risk,
         "potential_recovery": potential_recovery,
         "forecast": forecast_data,
+        "domain": eng._domain or "generic",
         "model_info": {
             "name": best_model,
             "n_estimators": getattr(eng._raw_model, 'n_estimators', 100),
@@ -612,6 +740,13 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
 
     # Cache engine for per-user SHAP & what-if
     _engine_cache[cache_key] = {'engine': eng, 'rfm_df': churn_results, 'shap_data': shap_data}
+
+    # ── UPDATE LIVE TICKER POOL ──
+    # Feed active user IDs to the generator so the websocket stream looks realistic
+    try:
+        set_user_pool(final_df['user_id'].tolist())
+    except Exception as e:
+        logger.warning(f"Could not update LiveTicker pool: {e}")
 
     return {"summary": summary, "users": user_data}
 
@@ -633,8 +768,8 @@ def _build_synthetic_demo_df(n_users: int = 500, seed: int = 42) -> pd.DataFrame
         
         for _ in range(n_tx):
             if is_loyal:
-                # Loyal users seen recently
-                days_ago = int(rng.integers(0, 365))
+                # Loyal users seen recently (last 90 days for current activity)
+                days_ago = int(rng.integers(0, 90))
             else:
                 # Churn-prone users haven't been seen in 3-12 months
                 days_ago = int(rng.integers(90, 365))
@@ -695,7 +830,7 @@ def _warmup_dataset(fname):
 
 
 def _warmup_caches():
-    logger.info("⏳ Starting Warmup Engine (Sequential)...")
+    logger.info("⏳ Starting Warmup Engine (Parallel)...")
     
     if not os.path.exists(DATASET_DIR):
         os.makedirs(DATASET_DIR, exist_ok=True)
@@ -705,12 +840,14 @@ def _warmup_caches():
     # Prioritize specific domains (UPI, Tax, Churn) for warmup
     files.sort(key=lambda x: 0 if any(d in x.lower() for d in ['upi', 'tax', 'churn']) else 1)
     
-    # 2. Process all datasets SEQUENTIALLY to save RAM on free tier
-    logger.info(f"⏳ Processing {len(files)} datasets sequentially...")
-    for fname in files:
-        _warmup_dataset(fname)
+    # 2. Process datasets in parallel to speed up initialization
+    # We use 2 workers as a safe middle ground between speed and RAM usage
+    max_workers = 2 if not IS_CLOUD else 1
+    logger.info(f"⏳ Processing {len(files)} datasets with {max_workers} workers...")
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(_warmup_dataset, files)
 
-    # 3. Skip combined dataset on free tier (too much RAM)
     logger.info("✅ All local datasets are now cached and ready for access.")
 
 
@@ -1021,6 +1158,13 @@ async def get_llm_hypotheses():
     
     hypotheses = await generate_llm_hypotheses(segment_stats, drivers, shap_data)
     return {"hypotheses": hypotheses, "source": "llm" if os.environ.get('GROQ_API_KEY') else "rule_based"}
+
+@app.post("/explain-roi")
+async def explain_roi(req: ROIExplainRequest):
+    """Explain simulation ROI using LLM."""
+    from services.llm_engine import generate_roi_explanation
+    explanation = await generate_roi_explanation(req.dict())
+    return {"explanation": explanation}
 
 
 @app.get("/interventions")

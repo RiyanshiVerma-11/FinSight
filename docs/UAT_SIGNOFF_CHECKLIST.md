@@ -4,11 +4,14 @@ Project: FinSight - User Segmentation and Churn Analyzer for Fintech Partners
 
 ## Required Screenshots (attach image paths in PR/comments)
 
-- [ ] Executive View tab loaded with real dataset
+- [ ] Executive View tab loaded with real dataset and ROC-AUC Confidence Badge
 - [ ] Overview tab with Segments, Lifecycle, and Churn Drivers visible
+- [ ] Survival Analysis tab with 6-month risk projections vs baseline
+- [ ] Active Experiments tab with AI-driven hypotheses and testable interventions
 - [ ] Explainability tab with SHAP Feature Impact and Behavioral Risk Interaction scatter points
 - [ ] Simulation tab with What-If result cards and Intervention Engine table
 - [ ] Users tab with Cohort Retention table and User-Level Analytics table
+- [ ] Model Health section displays modernized Confusion Matrix (Correct Detection vs Missed Churners)
 
 ## Functional Acceptance
 

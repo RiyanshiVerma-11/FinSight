@@ -14,6 +14,17 @@ class WhatIfRequest(BaseModel):
     feature: str = Field(..., description="Feature to modify: 'recency', 'frequency', or 'monetary'")
     delta_pct: float = Field(..., ge=-100, le=500, description="Percentage change to apply (-100 to +500)")
 
+class ROIExplainRequest(BaseModel):
+    segment: str
+    feature: str
+    delta_pct: float
+    original_churn: float
+    simulated_churn: float
+    users_affected: int
+    cost: float
+    ltv_gained: float
+    is_profitable: bool
+
 
 class StreamConfigRequest(BaseModel):
     """Configuration for the real-time event stream."""

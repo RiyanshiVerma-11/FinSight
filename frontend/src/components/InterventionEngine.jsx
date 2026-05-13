@@ -6,12 +6,55 @@ import FormulaTooltip from './FormulaTooltip';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const PERSONA_MAP = {
-  'Champions': 'The Loyal Giant',
-  'Loyalists': 'The Steady Pillar',
-  'Promising': 'The Rising Star',
-  'At Risk': 'The Fading Star',
-  'Hibernating': 'The Lost Soul',
+const PERSONA_DEFINITIONS = {
+  'Champions': {
+    label: 'The Loyal Giant',
+    description: 'Power users with the highest frequency and spend.',
+    upi: 'Frequent daily transactions with high wallet share. These are your most valuable users who use UPI for everything.',
+    tax: 'High-income individuals with complex, multi-section filings. High LTV but sensitive to service quality.',
+    retail: 'Big spenders who shop weekly and have the highest average order value.',
+    bank_churn: 'High-net-worth individuals with multiple active products (Savings, Credit, Loan). High balance stability.'
+  },
+  'Loyalists': {
+    label: 'The Steady Pillar',
+    description: 'Consistent, regular users who are the backbone of your revenue.',
+    upi: 'Regular users who use UPI for routine daily/weekly payments. Reliable and predictable.',
+    tax: 'Consistent salaried filers who return every season. Low maintenance and high retention.',
+    retail: 'Repeat customers with a steady purchase cadence. They trust the brand but are price-conscious.',
+    bank_churn: 'Long-tenure customers with steady salary deposits and consistent card usage. High reliability.'
+  },
+  'Promising': {
+    label: 'The Rising Star',
+    description: 'New or growing users showing strong signals of becoming loyalists.',
+    upi: 'Newer users who are rapidly increasing their transaction count. Great potential for wallet-share growth.',
+    tax: 'Recent users who have just started exploring premium filing services.',
+    retail: 'Recent first-time buyers who have returned for a second purchase within a short window.',
+    bank_churn: 'New account holders with rapidly increasing balances or recently added secondary products.'
+  },
+  'At Risk': {
+    label: 'The Fading Star',
+    description: 'Previously loyal users whose activity has recently dropped. High churn risk.',
+    upi: 'Users who used to be active but haven\'t made a transaction in 7-14 days. Switching risk is high.',
+    tax: 'Previous filers who haven\'t logged in as the deadline approaches. Potential loss of premium revenue.',
+    retail: 'Frequent shoppers who haven\'t placed an order in over 30 days. Likely exploring competitors.',
+    bank_churn: 'Customers with significant balance depletion or those who have recently cancelled credit cards/SIPs.'
+  },
+  'Hibernating': {
+    label: 'The Lost Soul',
+    description: 'Inactive users with very low activity. Requires major re-engagement.',
+    upi: 'Dormant users who have nearly abandoned the wallet. Needs a big incentive to return.',
+    tax: 'Historical users who haven\'t filed through the platform in the last 2 cycles.',
+    retail: 'One-time shoppers from over 6 months ago. Low probability of return without major push.',
+    bank_churn: 'Minimum balance accounts with no transactions for 90+ days. Likely already using another primary bank.'
+  },
+  'Needs Attention': {
+    label: 'The Drifting User',
+    description: 'Users with irregular usage patterns and inconsistent engagement.',
+    upi: 'Occasional users with high transaction failure rates or low balance issues.',
+    tax: 'Users who started their tax filing but stopped halfway. Likely facing UX friction.',
+    retail: 'Users who browse frequently and add to cart but rarely complete the checkout.',
+    bank_churn: 'Customers with declining credit scores or those showing erratic spending patterns.'
+  }
 };
 
 const SEGMENT_COLORS = {
@@ -20,9 +63,11 @@ const SEGMENT_COLORS = {
   'Promising': '#06b6d4',
   'At Risk': '#f43f5e',
   'Hibernating': '#94a3b8',
+  'Needs Attention': '#f59e0b',
+  'New': '#8b5cf6',
 };
 
-export default function InterventionEngine({ segments, segChurn, metrics }) {
+export default function InterventionEngine({ segments, segChurn, metrics, domain }) {
   const segmentList = segments ? Object.entries(segments) : [];
   const [interventions, setInterventions] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -101,7 +146,7 @@ export default function InterventionEngine({ segments, segChurn, metrics }) {
               const cost = Math.round(segData?.intervention_cost || 100);
               const isProfitable = segData?.is_profitable ?? (estLtv > cost);
               const roiColor = isProfitable ? '#10b981' : '#f43f5e';
-              const personaName = PERSONA_MAP[seg] || seg;
+              const personaName = PERSONA_DEFINITIONS[seg]?.label || seg;
 
               const dynIntervention = interventions?.find(iv => iv.segment === seg);
               const problem = dynIntervention?.problem || (segData?.avg_churn > 0.4 ? `Critical churn at ${churnPct}%` : segData?.avg_churn > 0.2 ? `Elevated risk at ${churnPct}%` : `Stable performance at ${churnPct}%`);
@@ -121,7 +166,12 @@ export default function InterventionEngine({ segments, segChurn, metrics }) {
                 >
                   <td style={{ padding: '1.25rem 1rem' }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontWeight: 900, color: '#1e293b', fontSize: '0.95rem' }}>{personaName}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontWeight: 900, color: '#1e293b', fontSize: '0.95rem' }}>{personaName}</span>
+                        <FormulaTooltip formula={PERSONA_DEFINITIONS[seg]?.[domain] || PERSONA_DEFINITIONS[seg]?.description || "Strategic segment based on user behavior."}>
+                          <Info size={12} style={{ color: '#94a3b8', cursor: 'help' }} />
+                        </FormulaTooltip>
+                      </div>
                       <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>{seg}</span>
                     </div>
                   </td>

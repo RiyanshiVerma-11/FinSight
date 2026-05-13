@@ -12,8 +12,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Simulated user pool
+# Simulated user pool (default fallback)
 _USER_POOL = [f"USR_{i:03d}" for i in range(200)]
+_ACTIVE_POOL = None  # Set by main.py when a dataset is loaded
 _PRODUCTS = ['Premium Plan', 'Basic Plan', 'Add-on Pack', 'Enterprise', 'Wallet Top-up', 'Bill Pay', 'Investment', 'Insurance']
 
 EVENT_TYPES = {
@@ -35,9 +36,32 @@ for uid in _USER_POOL:
     }
 
 
+def set_user_pool(user_ids):
+    """Called by main.py after dataset ingestion to make the ticker realistic."""
+    global _ACTIVE_POOL, _USER_PROFILES
+    if user_ids and len(user_ids) > 0:
+        _ACTIVE_POOL = list(user_ids)[:500]  # Cap to avoid memory bloat
+        # Auto-generate profiles for new users
+        for uid in _ACTIVE_POOL:
+            if uid not in _USER_PROFILES:
+                _USER_PROFILES[uid] = {
+                    'risk_level': random.choice(['low', 'low', 'medium', 'medium', 'high']),
+                    'avg_amount': random.uniform(20, 500),
+                    'fail_rate': random.uniform(0.02, 0.25),
+                }
+        logger.info(f"📡 LiveTicker pool updated: {len(_ACTIVE_POOL)} real user IDs")
+
+
 def generate_event():
     """Generate a single synthetic fintech event."""
-    user_id = random.choice(_USER_POOL)
+    pool = _ACTIVE_POOL if _ACTIVE_POOL else _USER_POOL
+    user_id = random.choice(pool)
+    if user_id not in _USER_PROFILES:
+        _USER_PROFILES[user_id] = {
+            'risk_level': random.choice(['low', 'medium', 'high']),
+            'avg_amount': random.uniform(20, 500),
+            'fail_rate': random.uniform(0.02, 0.25),
+        }
     profile = _USER_PROFILES[user_id]
 
     # Weighted event type selection — high-risk users get more failures

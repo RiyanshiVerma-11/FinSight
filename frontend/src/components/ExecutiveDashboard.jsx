@@ -12,14 +12,71 @@ import {
 import FormulaTooltip from './FormulaTooltip';
 
 const COLORS = ['#6366f1', '#ec4899', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
-
 const SEGMENT_COLORS = {
   'Champions': '#10b981',
   'Loyalists': '#6366f1',
   'Promising': '#06b6d4',
   'At Risk': '#f43f5e',
-  'Needs Attention': '#f59e0b',
   'Hibernating': '#94a3b8',
+  'Needs Attention': '#f59e0b',
+  'New': '#8b5cf6',
+};
+
+const PERSONA_DEFINITIONS = {
+  'Champions': {
+    label: 'The Loyal Giant',
+    color: '#10b981',
+    description: 'Power users with the highest frequency and spend.',
+    upi: 'Frequent daily transactions with high wallet share. These are your most valuable users who use UPI for everything.',
+    tax: 'High-income individuals with complex, multi-section filings. High LTV but sensitive to service quality.',
+    retail: 'Big spenders who shop weekly and have the highest average order value.',
+    bank_churn: 'High-net-worth individuals with multiple active products (Savings, Credit, Loan). High balance stability.'
+  },
+  'Loyalists': {
+    label: 'The Steady Pillar',
+    color: '#6366f1',
+    description: 'Consistent, regular users who are the backbone of your revenue.',
+    upi: 'Regular users who use UPI for routine daily/weekly payments. Reliable and predictable.',
+    tax: 'Consistent salaried filers who return every season. Low maintenance and high retention.',
+    retail: 'Repeat customers with a steady purchase cadence. They trust the brand but are price-conscious.',
+    bank_churn: 'Long-tenure customers with steady salary deposits and consistent card usage. High reliability.'
+  },
+  'Promising': {
+    label: 'The Rising Star',
+    color: '#06b6d4',
+    description: 'New or growing users showing strong signals of becoming loyalists.',
+    upi: 'Newer users who are rapidly increasing their transaction count. Great potential for wallet-share growth.',
+    tax: 'Recent users who have just started exploring premium filing services.',
+    retail: 'Recent first-time buyers who have returned for a second purchase within a short window.',
+    bank_churn: 'New account holders with rapidly increasing balances or recently added secondary products.'
+  },
+  'At Risk': {
+    label: 'The Fading Star',
+    color: '#f43f5e',
+    description: 'Previously loyal users whose activity has recently dropped. High churn risk.',
+    upi: 'Users who used to be active but haven\'t made a transaction in 7-14 days. Switching risk is high.',
+    tax: 'Previous filers who haven\'t logged in as the deadline approaches. Potential loss of premium revenue.',
+    retail: 'Frequent shoppers who haven\'t placed an order in over 30 days. Likely exploring competitors.',
+    bank_churn: 'Customers with significant balance depletion or those who have recently cancelled credit cards/SIPs.'
+  },
+  'Hibernating': {
+    label: 'The Lost Soul',
+    color: '#94a3b8',
+    description: 'Inactive users with very low activity. Requires major re-engagement.',
+    upi: 'Dormant users who have nearly abandoned the wallet. Needs a big incentive to return.',
+    tax: 'Historical users who haven\'t filed through the platform in the last 2 cycles.',
+    retail: 'One-time shoppers from over 6 months ago. Low probability of return without major push.',
+    bank_churn: 'Minimum balance accounts with no transactions for 90+ days. Likely already using another primary bank.'
+  },
+  'Needs Attention': {
+    label: 'The Drifting User',
+    color: '#f59e0b',
+    description: 'Users with irregular usage patterns and inconsistent engagement.',
+    upi: 'Occasional users with high transaction failure rates or low balance issues.',
+    tax: 'Users who started their tax filing but stopped halfway. Likely facing UX friction.',
+    retail: 'Users who browse frequently and add to cart but rarely complete the checkout.',
+    bank_churn: 'Customers with declining credit scores or those showing erratic spending patterns.'
+  }
 };
 
 const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4'];
@@ -96,6 +153,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export default function ExecutiveDashboard({ data, globalSimResult, onExportAll, onNavigate }) {
+  const domain = data?.summary?.domain || 'generic';
   const [showOnboardingList, setShowOnboardingList] = useState(false);
   const [selectedHypothesis, setSelectedHypothesis] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -128,12 +186,17 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
 
   const forecastData = useMemo(() => s?.forecast || [], [s?.forecast]);
 
-  let currentChurnRisk = s?.avg_churn_risk || 0;
+  // Use BASELINE churn rate (simple mean) as the primary metric for executive view
+  // This is the true unweighted churn risk across all users — what a reviewer expects
+  const baselineChurnRate = s?.baseline_churn_rate || s?.avg_churn_risk || 0;
+  const revenueWeightedRisk = s?.avg_churn_risk || 0;
+  let currentChurnRisk = baselineChurnRate;
   if (globalSimResult && totalUsers > 0) {
       const churnDecrease = (globalSimResult.original_churn - globalSimResult.simulated_churn) * globalSimResult.users_affected / totalUsers;
       currentChurnRisk -= churnDecrease;
   }
   const churnPct = (currentChurnRisk * 100 || 0).toFixed(1);
+  const revenueWeightedPct = (revenueWeightedRisk * 100).toFixed(1);
 
   // Strategic Insights based on data health and drift
   const driftStatus = s?.metrics?.drift?.status || 'STABLE';
@@ -198,16 +261,20 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 </span>
                 <span style={{ color: 'rgba(255,255,255,0.4)' }}>•</span>
                 <span style={{ color: '#ffffff', opacity: 0.9 }}>{totalUsers.toLocaleString()} High-Value Profiles Analyzed</span>
-                {s?.metrics?.roc_auc > 0.75 && (
+                {s?.metrics?.roc_auc ? (
                   <span style={{ 
-                    fontSize: '0.65rem', fontWeight: 900, color: '#10b981', 
-                    background: 'rgba(16,185,129,0.1)', padding: '0.2rem 0.6rem', 
-                    borderRadius: '20px', border: '1px solid rgba(16,185,129,0.2)',
+                    fontSize: '0.65rem', fontWeight: 900, 
+                    color: s.metrics.roc_auc > 0.75 ? '#10b981' : s.metrics.roc_auc > 0.60 ? '#f59e0b' : '#f43f5e', 
+                    background: s.metrics.roc_auc > 0.75 ? 'rgba(16,185,129,0.1)' : s.metrics.roc_auc > 0.60 ? 'rgba(245,158,11,0.1)' : 'rgba(244,63,94,0.1)', 
+                    padding: '0.2rem 0.6rem', 
+                    borderRadius: '20px', 
+                    border: `1px solid ${s.metrics.roc_auc > 0.75 ? 'rgba(16,185,129,0.2)' : s.metrics.roc_auc > 0.60 ? 'rgba(245,158,11,0.2)' : 'rgba(244,63,94,0.2)'}`,
                     display: 'flex', alignItems: 'center', gap: '0.3rem'
                   }}>
-                    <ShieldCheck size={10} /> High Reliability Analysis
+                    {s.metrics.roc_auc > 0.75 ? <ShieldCheck size={10} /> : <AlertTriangle size={10} />}
+                    {s.metrics.roc_auc > 0.75 ? 'High Confidence' : s.metrics.roc_auc > 0.60 ? 'Moderate Confidence' : 'Low Confidence'} (AUC: {(s.metrics.roc_auc * 100).toFixed(1)}%)
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
@@ -300,10 +367,10 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
             },
             { 
               id: 'risk',
-              icon: AlertTriangle, label: 'Risk Intensity', value: `${churnPct}%`, 
-              sub: 'Churn Probability', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',
-              desc: 'Likelihood of customers leaving in 90 days.',
-              logic: "Computed from: Σ(User Churn Prob × User Monetary) / Σ(Total Monetary). A revenue-weighted average of churn risk across all segments."
+              icon: AlertTriangle, label: 'Baseline Churn Risk', value: `${churnPct}%`, 
+              sub: 'Unweighted Mean', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',
+              desc: `Average churn probability across all ${totalUsers} users. Revenue-weighted: ${revenueWeightedPct}%.`,
+              logic: `Computed from: Mean(All User Churn Probabilities). This is the unbiased baseline risk — the average probability that any given user will churn. Revenue-Weighted Risk (${revenueWeightedPct}%) factors in monetary value.`
             },
             { 
               id: 'exposure',
@@ -426,7 +493,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                                dataKey="count"
                             >
                                {segChurn.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={SEGMENT_COLORS[entry.segment] || COLORS[index % COLORS.length]} />
+                                  <Cell key={`cell-${index}`} fill={PERSONA_DEFINITIONS[entry.segment]?.color || COLORS[index % COLORS.length]} />
                                ))}
                             </Pie>
                             <Tooltip content={<CustomTooltip />} />
@@ -436,8 +503,8 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '1rem' }}>
                       {segChurn.slice(0, 4).map((seg, i) => (
                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.7rem', fontWeight: 700 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: SEGMENT_COLORS[seg.segment] }} />
-                            <span style={{ color: 'var(--text-secondary)' }}>{seg.segment}</span>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: PERSONA_DEFINITIONS[seg.segment]?.color || '#6366f1' }} />
+                            <span style={{ color: 'var(--text-secondary)' }}>{PERSONA_DEFINITIONS[seg.segment]?.label || seg.segment}</span>
                          </div>
                       ))}
                    </div>
@@ -453,7 +520,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                           <div key={i} style={{ borderBottom: i < 4 ? '1px solid rgba(0,0,0,0.02)' : 'none', paddingBottom: i < 4 ? '0.75rem' : 0 }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 800, marginBottom: '0.25rem' }}>
                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <span style={{ color: '#0f172a' }}>{seg.segment}</span>
+                                    <span style={{ color: '#0f172a' }}>{PERSONA_DEFINITIONS[seg.segment]?.label || seg.segment}</span>
                                     <span style={{ 
                                        fontSize: '0.65rem', 
                                        fontWeight: 900, 
@@ -467,21 +534,13 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                                  </div>
                               </div>
                               <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600, marginBottom: '0.6rem', lineHeight: 1.4 }}>
-                                 {seg.definition || {
-                                    'Champions': 'Best customers: High spenders who buy frequently and recently.',
-                                    'Loyalists': 'Reliable regulars: Consistent purchase history with high engagement.',
-                                    'At Risk': 'High-value but fading: Historically big spenders who haven\'t returned recently.',
-                                    'Hibernating': 'Lost users: Low frequency and hasn\'t interacted in a long time.',
-                                    'Promising': 'Emerging stars: Recent joiners with high initial spending potential.',
-                                    'Needs Attention': 'Struggling users: Average value but showing signs of declining activity.',
-                                    'New': 'Fresh leads: Just joined the platform; habits not yet formed.'
-                                 }[seg.segment] || 'Behavioral segment based on RFM scoring.'}
+                                 {seg.definition || PERSONA_DEFINITIONS[seg.segment]?.[domain] || PERSONA_DEFINITIONS[seg.segment]?.description || 'Behavioral segment based on ML scoring.'}
                               </div>
                              <div style={{ height: 6, background: 'rgba(0,0,0,0.03)', borderRadius: 10, overflow: 'hidden' }}>
                                 <motion.div 
                                    initial={{ width: 0 }}
                                    animate={{ width: `${seg.avg_churn * 100}%` }}
-                                   style={{ height: '100%', background: SEGMENT_COLORS[seg.segment] || '#6366f1', borderRadius: 10 }} 
+                                   style={{ height: '100%', background: PERSONA_DEFINITIONS[seg.segment]?.color || '#6366f1', borderRadius: 10 }} 
                                 />
                              </div>
                           </div>
@@ -684,7 +743,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                          background: 'rgba(255,255,255,0.8)', 
                          borderRadius: '18px', 
                          border: '1px solid rgba(0,0,0,0.05)',
-                         borderLeft: `6px solid ${SEGMENT_COLORS[h.driver] || '#6366f1'}`,
+                         borderLeft: `6px solid ${PERSONA_DEFINITIONS[h.driver]?.color || '#6366f1'}`,
                          boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
                          cursor: 'pointer'
                        }}>
@@ -927,13 +986,13 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 boxShadow: '0 25px 50px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column'
               }}
             >
-              <div style={{ padding: '2rem', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: `linear-gradient(135deg, ${SEGMENT_COLORS[selectedHypothesis.driver] || '#6366f1'}15, #fff)` }}>
+              <div style={{ padding: '2rem', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: `linear-gradient(135deg, ${PERSONA_DEFINITIONS[selectedHypothesis.driver]?.color || '#6366f1'}15, #fff)` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ background: SEGMENT_COLORS[selectedHypothesis.driver] || '#6366f1', color: '#fff', padding: '0.75rem', borderRadius: '14px', boxShadow: '0 8px 16px rgba(0,0,0,0.1)' }}>
+                  <div style={{ background: PERSONA_DEFINITIONS[selectedHypothesis.driver]?.color || '#6366f1', color: '#fff', padding: '0.75rem', borderRadius: '14px', boxShadow: '0 8px 16px rgba(0,0,0,0.1)' }}>
                     <Lightbulb size={24} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: SEGMENT_COLORS[selectedHypothesis.driver] || '#6366f1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Strategic Evidence</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: PERSONA_DEFINITIONS[selectedHypothesis.driver]?.color || '#6366f1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Strategic Evidence</div>
                     <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>{selectedHypothesis.title}</h2>
                   </div>
                 </div>

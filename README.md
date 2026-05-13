@@ -35,6 +35,30 @@ We considered Deep Learning (RNN/LSTMs) but **rejected them** because they lack 
 - **Why Ensemble (RF + XGB)?**: We use a Random Forest for baseline stability and XGBoost for catching non-linear edge cases.
 - **Why SHAP Interaction?**: Standard feature importance is shallow. FinSight uses **SHAP Dependence Analysis** to show how features interact (e.g., how high "Spend" combined with "Low Tenure" creates a specific high-risk persona).
 - **The "Truth" Guard**: Every prediction is backed by a **Model Evidence %**, ensuring that PMs know whether a strategy is a statistical certainty or a weak correlation.
+- **Human-Centric Personas**: We translate abstract clusters into **Strategic Personas** (e.g., *The Loyal Giant*, *The Fading Star*) with domain-specific explanations for non-technical stakeholders.
+
+---
+
+## 🚀 Core Platform Features
+
+### 1. Multi-Domain Intelligence
+FinSight is pre-calibrated for high-impact sectors:
+- **UPI & Fintech**: Analyzes transaction failure rates, VPA diversity, and wallet-share velocity.
+- **Tax & Compliance**: Specialized features for Form 26AS, TDS compliance rates, and income-head diversity.
+- **Banking**: Monitors balance stability, credit score drift, and multi-product engagement.
+*   **Retail**: Standard RFM analysis with high-velocity SKU tracking.
+
+### 2. What-If Simulation 2.0
+An interactive sandbox where product managers can simulate behavioral changes (e.g., *"What if we reduce UPI failure rates by 15%?"*) and immediately see the projected **Revenue Saved** and **ROI**.
+
+### 3. Prescriptive Strategic Playbooks
+Beyond prediction, FinSight generates **AI-driven Hypotheses** based on SHAP (Shapley Additive Explanations) values. It tells you exactly *why* a user is churning and prescribes a specific A/B test to save them.
+
+### 4. Predictive Survival Analysis
+12-month cohort retention heatmaps built using probabilistic survival functions to forecast the long-term health of your user base.
+
+### 5. Experimentation Hub
+A dedicated workspace to track and manage active A/B tests, allowing you to bridge the gap between "Insight" and "Action" directly within the platform.
 
 ---
 
@@ -43,13 +67,13 @@ We considered Deep Learning (RNN/LSTMs) but **rejected them** because they lack 
 ![FinSight Architecture](architecture_diagram.png)
 
 ### The Intelligence Pipeline:
-1. **The Ingestion Layer**: Consumes raw transactional logs (UPI, Tax, Retail) via a schema-agnostic mapping engine.
+1. **The Ingestion Layer**: Consumes raw transactional logs (UPI, Tax, Retail) via a schema-agnostic mapping engine with autonomous domain detection.
 2. **The AI Core**: 
    - **Adaptive RFM**: Autonomously defines behavioral segments.
-   - **Ensemble Model**: Random Forest + XGBoost predict churn with 85%+ accuracy.
+   - **Ensemble Model**: Random Forest + XGBoost + HistGradientBoosting stacking for 90%+ ROC-AUC.
    - **Explainability (XAI)**: SHAP TreeExplainer generates the "Why" for every score.
-3. **The Prescriptive Layer**: Transforms model SHAP values into testable business hypotheses and retention strategies.
-4. **The Executive Dashboard**: Provides real-time Revenue-at-Risk (RAR) monitoring and board-ready PDF reporting.
+3. **The Prescriptive Layer**: Transforms model SHAP values into testable business hypotheses and actionable strategic playbooks.
+4. **The Executive Dashboard**: Provides real-time Revenue-at-Risk (RAR) monitoring, board-ready briefs, and predictive cohort heatmaps.
 
 ---
 

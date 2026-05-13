@@ -245,3 +245,49 @@ def _fallback_interventions(segment_stats, drivers):
         })
     return interventions
 
+
+async def generate_roi_explanation(req_data):
+    """Generate a quick explanation for simulation profit/loss."""
+    if not GROQ_API_KEY or not HAS_HTTPX:
+        return _fallback_roi_explanation(req_data)
+
+    prompt = f"""You are a senior FinSight data scientist explaining a churn simulation ROI in a concise, hard-hitting manner.
+Based on the following counterfactual simulation result, explain exactly WHY it is profitable or non-profitable.
+
+Data:
+- Segment: {req_data['segment']}
+- Intervention: changed {req_data['feature']} by {req_data['delta_pct']}%
+- Users Affected: {req_data['users_affected']}
+- Churn Drop: {(req_data['original_churn'] - req_data['simulated_churn'])*100:.2f}% (from {req_data['original_churn']*100:.1f}% to {req_data['simulated_churn']*100:.1f}%)
+- Total Campaign Cost: ₹{req_data['cost']:.0f}
+- Net LTV Saved (Revenue recovered): ₹{req_data['ltv_gained']:.0f}
+- Is Profitable: {req_data['is_profitable']}
+
+Provide exactly ONE short paragraph (2-3 sentences max) explaining what is happening. Use absolute numbers where it makes impact. Mention if the cost outweighs the recovered LTV or vice versa. Do not use JSON, just return the raw text."""
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,
+                    "max_tokens": 150,
+                }
+            )
+            if resp.status_code == 200:
+                content = resp.json()['choices'][0]['message']['content']
+                return content.strip()
+    except Exception as e:
+        logger.error(f"LLM ROI explanation error: {e}")
+
+    return _fallback_roi_explanation(req_data)
+
+def _fallback_roi_explanation(req_data):
+    if req_data['is_profitable']:
+        return f"This strategy is highly profitable because the ₹{req_data['ltv_gained']:,.0f} in Lifetime Value (LTV) recovered from saving {(req_data['original_churn'] - req_data['simulated_churn'])*100:.1f}% of users easily offsets the ₹{req_data['cost']:,.0f} intervention cost."
+    else:
+        return f"This strategy is flagged as non-profitable. The campaign cost of ₹{req_data['cost']:,.0f} outweighs the expected LTV recovery of ₹{req_data['ltv_gained']:,.0f}. We recommend targeting a smaller, higher-value cohort or reducing the per-user cost."
+

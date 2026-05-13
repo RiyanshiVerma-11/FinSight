@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier, HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegressionCV
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler, PowerTransformer
 from sklearn.metrics import (
     silhouette_score, roc_auc_score, f1_score,
     precision_score, recall_score,
@@ -22,7 +23,14 @@ try:
     import shap
     HAS_SHAP = True
 except ImportError:
-    HAS_SHAP = False
+    if os.environ.get('FINSIGHT_ALLOW_NO_SHAP', '0') == '1':
+        HAS_SHAP = False
+        logging.getLogger(__name__).warning("SHAP not installed — fallback allowed via FINSIGHT_ALLOW_NO_SHAP=1")
+    else:
+        raise ImportError(
+            "shap is required but not installed. Install with: pip install shap. "
+            "Set FINSIGHT_ALLOW_NO_SHAP=1 to allow fallback mode."
+        )
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import precision_recall_curve, auc as sklearn_auc
 
@@ -38,43 +46,68 @@ logger = logging.getLogger(__name__)
 
 
 class AnalyticsEngine:
+    # ── Leakage columns to always exclude from training ──
+    LEAKAGE_COLUMNS = {
+        'user_id', 'customer_id', 'target_churn', 'churn_probability',
+        'cluster', 'rfm_score', 'revenue_at_risk', 'predicted_ltv',
+        'priority_score', 'intervention_cost', 'RowNumber',
+        # Transaction-level identifiers that survive groupby merges
+        'rrn', 'txn_id', 'txn_id_raw', 'rrn_raw', 'pan', 'deductor_tan',
+        'tan', 'payer_vpa', 'payee_vpa', 'payer_vpa_raw', 'payee_vpa_raw',
+        # Derived scores that leak the target
+        'rfm_raw',
+        'first_seen', 'last_seen', 'last_purchase',
+        # Non-feature metadata
+        '_is_summary', 'domain',
+    }
+
     def __init__(self):
         self.scaler = StandardScaler()
-        # Keep unfitted base estimators for tuning/fallback only.
-        # self.best_model and self._raw_model are set to None until a model
-        # is actually fitted — this prevents stale unfitted references.
         self.model = RandomForestClassifier(
-            n_estimators=100, random_state=42, n_jobs=1,
-            class_weight='balanced_subsample'
+            n_estimators=200, random_state=42, n_jobs=1,
+            class_weight='balanced_subsample', max_depth=15
+        )
+        self.hgb_model = HistGradientBoostingClassifier(
+            max_iter=200, random_state=42, 
+            learning_rate=0.05, max_depth=10,
+            class_weight='balanced'
         )
         if HAS_XGB:
             self.xgb_model = xgb.XGBClassifier(
-                n_estimators=100,
-                max_depth=4,
-                learning_rate=0.1,
+                n_estimators=300,
+                max_depth=6,
+                learning_rate=0.05,
                 subsample=0.8,
                 colsample_bytree=0.8,
+                min_child_weight=3,
+                gamma=0.1,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
                 n_jobs=1,
                 random_state=42,
                 eval_metric='logloss'
             )
         else:
-            # GradientBoostingClassifier is a safe sklearn-native fallback
             self.xgb_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
 
-        # ── CRITICAL FIX: best_model / _raw_model start as None ──
-        # They are ONLY assigned after a model has been successfully fitted.
-        # This eliminates the stale-unfitted-model bug entirely.
-        self.best_model = None   # authoritative fitted model reference
-        self._raw_model = None   # raw (pre-calibration) fitted model reference
+        self.best_model = None
+        self._raw_model = None
         self._explainer = None
         self._feature_names = []
         self._feature_columns = []
         self._last_threshold = 0.5
         self._last_rfm = None
         self._domain = 'retail'
+        self._rar_window = 90  # default Revenue-at-Risk projection window (days)
+        self._rar_margin = 1.0  # revenue margin factor (1.0 = 100% of velocity is revenue)
         self._model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'models')
         os.makedirs(self._model_dir, exist_ok=True)
+
+        # Log SHAP availability at init
+        if HAS_SHAP:
+            logger.info(f"✅ SHAP v{shap.__version__} loaded successfully")
+        else:
+            logger.warning("⚠️ SHAP not available — using feature_importances_ fallback")
 
     def _is_fitted(self, model) -> bool:
         """Return True iff model has been fitted (safe for any sklearn estimator)."""
@@ -89,46 +122,67 @@ class AnalyticsEngine:
             return True
         return False
 
+    @staticmethod
+    def _assign_segment(score, r_score):
+        """Single source of truth for RFM segment assignment.
+        Used by both calculate_rfm and get_segment_churn to prevent drift."""
+        if score >= 13 and r_score >= 4: return 'Champions'
+        if score >= 10 and r_score >= 3: return 'Loyalists'
+        if r_score <= 1 and score <= 5: return 'Hibernating'
+        if r_score <= 2 and score >= 8: return 'At Risk'
+        if score >= 7: return 'Promising'
+        if score >= 4: return 'Needs Attention'
+        return 'Hibernating'
+
     def get_feature_importances(self):
         """Safely retrieve feature importances from the best raw fitted model available."""
         for model in [self._raw_model, self.xgb_model, self.model]:
-            if model is not None and self._is_fitted(model) and hasattr(model, 'feature_importances_'):
-                return np.nan_to_num(model.feature_importances_)
+            if model is not None and self._is_fitted(model):
+                if hasattr(model, 'feature_importances_'):
+                    return np.nan_to_num(model.feature_importances_)
+                from sklearn.ensemble import StackingClassifier
+                if isinstance(model, StackingClassifier) and hasattr(model, 'estimators_') and len(model.estimators_) > 0:
+                    if hasattr(model.estimators_[0], 'feature_importances_'):
+                        return np.nan_to_num(model.estimators_[0].feature_importances_)
         # Fallback to neutral importances if model is not suited for importance ranking
         return np.ones(len(self._feature_names)) / max(len(self._feature_names), 1) if self._feature_names else np.array([])
 
     def _tune_model(self, X, y):
-        """Tune hyperparameters. Each branch MUST leave the estimator fitted."""
-        if len(X) < 100 or y.nunique() < 2 or y.value_counts().min() < 2:
-            logger.warning("⚠️  Skipping tuning: dataset too small or single-class. Fitting defaults.")
-            # Fall through — callers will fit self.model / self.xgb_model directly.
+        """Tune hyperparameters for RF and HistGradientBoosting."""
+        if len(X) < 100 or y.nunique() < 2 or y.value_counts().min() < 5:
+            logger.warning("⚠️  Skipping tuning: dataset too small or single-class.")
             return
 
-        logger.info(f"🛠️  Tuning RF + XGB on {len(X)} samples...")
+        logger.info(f"🛠️  Tuning Ensemble on {len(X)} samples...")
+        # Use simpler grids for faster initialization
+        cv_folds = 3 if len(X) >= 1000 else 2
+        cv_strategy = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
 
-        # 1. Tune Random Forest (grid.best_estimator_ is already fitted by GridSearchCV)
-        rf_params = {'n_estimators': [100], 'max_depth': [10, 20], 'min_samples_split': [2, 5]}
-        grid = GridSearchCV(
+        # 1. Tune Random Forest - Simplified Grid
+        rf_params = {
+            'n_estimators': [200],
+            'max_depth': [10, 20],
+            'min_samples_leaf': [5]
+        }
+        grid_rf = GridSearchCV(
             RandomForestClassifier(random_state=42, n_jobs=1, class_weight='balanced_subsample'),
-            rf_params, cv=2, scoring='roc_auc', n_jobs=1
+            rf_params, cv=cv_strategy, scoring='roc_auc', n_jobs=1
         )
-        grid.fit(X, y)
-        self.model = grid.best_estimator_   # already fitted ✓
-        logger.info(f"🌲 RF Tuned (AUC≈{grid.best_score_:.4f}): {grid.best_params_}")
+        grid_rf.fit(X, y)
+        self.model = grid_rf.best_estimator_
+        logger.info(f"🌲 RF Tuned (AUC≈{grid_rf.best_score_:.4f})")
 
-        # 2. Tune XGBoost if the real library is available
-        if HAS_XGB:
-            xgb_params = {
-                'max_depth': [3, 5, 7],
-                'learning_rate': [0.01, 0.1],
-                'n_estimators': [100, 200]
-            }
-            grid_xgb = GridSearchCV(
-                self.xgb_model, xgb_params, cv=2, scoring='roc_auc', n_jobs=1
-            )
-            grid_xgb.fit(X, y)
-            self.xgb_model = grid_xgb.best_estimator_  # already fitted ✓
-            logger.info(f"🚀 XGB Tuned (AUC≈{grid_xgb.best_score_:.4f}): {grid_xgb.best_params_}")
+        # 2. Tune HistGradientBoosting - Simplified Grid
+        hgb_params = {
+            'max_iter': [100, 200],
+            'learning_rate': [0.05, 0.1],
+        }
+        grid_hgb = GridSearchCV(
+            self.hgb_model, hgb_params, cv=cv_strategy, scoring='roc_auc', n_jobs=1
+        )
+        grid_hgb.fit(X, y)
+        self.hgb_model = grid_hgb.best_estimator_
+        logger.info(f"📈 HGB Tuned (AUC≈{grid_hgb.best_score_:.4f})")
 
     # ────────────────────────────────────────────
     #  1. RFM Analysis & Clustering
@@ -213,24 +267,7 @@ class AnalyticsEngine:
         rfm['rfm_score'] = rfm[['r_score', 'f_score', 'm_score']].astype(int).sum(axis=1)
         rfm['rfm_raw'] = rfm['r_score'].astype(str) + '-' + rfm['f_score'].astype(str) + '-' + rfm['m_score'].astype(str)
 
-        # ── Business-Grade Natural Segmentation (No Hardcoding) ──
-        def segment_user(row):
-            r = int(row['r_score'])
-            score = row['rfm_score']
-            
-            # Champions/Loyalists must be recent and high-score
-            if score >= 13 and r >= 4: return 'Champions'
-            if score >= 10 and r >= 3: return 'Loyalists'
-            
-            # Hibernating users are definitely lost (Low Recency, Low Frequency)
-            if r <= 1 and score <= 5: return 'Hibernating'
-            
-            # At Risk: High historical value but fading recency
-            if r <= 2 and score >= 8: return 'At Risk'
-            
-            if score >= 7: return 'Promising'
-            if score >= 4: return 'Needs Attention'
-            return 'Hibernating'
+        # ── Business-Grade Natural Segmentation via centralized method ──
             
         # ── FOOLPROOF ASSIGNMENT: Avoid .apply() inference issues ──
         # We use a list comprehension to ensure a 1D Series is created
@@ -238,7 +275,7 @@ class AnalyticsEngine:
         if 'segment' in rfm.columns:
             rfm = rfm.drop(columns=['segment'])
             
-        rfm['segment'] = [segment_user(row) for _, row in rfm.iterrows()]
+        rfm['segment'] = [self._assign_segment(row['rfm_score'], int(row['r_score'])) for _, row in rfm.iterrows()]
         rfm['segment'] = rfm['segment'].astype(str)
 
         # K-Means Clustering - Added safety guard for empty or small datasets
@@ -349,6 +386,7 @@ class AnalyticsEngine:
                 # NOTE: Performance Optimization ── Return immediately if cache is hit
                 # to prevent redundant retraining and OOM crashes on large datasets.
                 logger.info(f"⚡ Model cache hit for '{model_id}'. Skipping retraining.")
+                cached_metrics['rar_window'] = getattr(self, '_rar_window', 90)
                 return rfm_df, fintech_drivers, cached_metrics, shap_data
 
         # 1. Prepare Features
@@ -391,22 +429,52 @@ class AnalyticsEngine:
         # Identify numeric features for training
         # We include rank scores as they are powerful behavioral signals
         # IMPORTANT: Exclude identifiers, raw duplicates, and non-behavioral metadata
-        exclude = [
-            'user_id', 'customer_id', 'target_churn', 'churn_probability', 
-            'cluster', 'rfm_score', 'revenue_at_risk', 'predicted_ltv',
-            'priority_score', 'intervention_cost', 'RowNumber',
-            'amount',  # raw transaction amount (already captured in monetary)
-        ]
+        exclude = self.LEAKAGE_COLUMNS
         # Also exclude _raw suffix columns (duplicates from merge) and string-derived numerics
         feature_cols = sorted([
             c for c in merged_df.select_dtypes(include=[np.number]).columns 
-            if c not in exclude and not c.endswith('_raw')
+            if c not in exclude and not c.endswith('_raw') and not c.endswith('_extra')
         ])
 
         
         # 2. Detect Ground Truth
         if 'target_churn' in df.columns:
-            logger.info(f"🎯 Labeled dataset detected. Using 'target_churn' as ground truth. Features: {feature_cols}")
+            # ── Feature Engineering for Labeled Datasets ──
+            # Add interaction and ratio features to boost AUC
+            if 'recency' in merged_df.columns and 'ipi_median' in merged_df.columns:
+                merged_df['ipi_ratio'] = merged_df['recency'] / (merged_df['ipi_median'] + 1e-9)
+                merged_df['recency_x_ipi'] = merged_df['recency'] * merged_df['ipi_median']
+            if 'monetary' in merged_df.columns and 'frequency' in merged_df.columns:
+                merged_df['monetary_x_frequency'] = merged_df['monetary'] * merged_df['frequency']
+                merged_df['monetary_per_txn'] = merged_df['monetary'] / (merged_df['frequency'] + 1e-9)
+            if 'monetary_velocity' in merged_df.columns:
+                merged_df['log_monetary_velocity'] = np.log1p(merged_df['monetary_velocity'].clip(lower=0))
+            for col in ['monetary', 'frequency', 'avg_basket_value']:
+                if col in merged_df.columns:
+                    merged_df[f'log_{col}'] = np.log1p(merged_df[col].clip(lower=0))
+            if 'frequency' in merged_df.columns and 'account_age_days' in merged_df.columns:
+                merged_df['frequency_velocity'] = merged_df['frequency'] / (merged_df['account_age_days'] + 1e-9)
+            
+            # Re-select feature columns after engineering
+            feature_cols = sorted([
+                c for c in merged_df.select_dtypes(include=[np.number]).columns
+                if c not in exclude and not c.endswith('_raw') and not c.endswith('_extra')
+            ])
+            
+            # ── Domain-Specific Feature Pruning ──
+            # For bank_churn (summary data), synthetic-RFM features add noise.
+            # Keep only the original dataset features + basic RFM aggregates.
+            if self._domain == 'bank_churn':
+                noisy_synthetic = {
+                    'ipi_median', 'ipi_std', 'ipi_consistency', 'ipi_ratio', 'ipi_max',
+                    'recency_deviation', 'recency_x_ipi', 'monetary_x_frequency',
+                    'log_avg_basket_value', 'log_monetary_velocity',
+                    'frequency_velocity', 'monetary_per_txn',
+                }
+                feature_cols = [c for c in feature_cols if c not in noisy_synthetic]
+                logger.info(f"🏦 Bank Churn: Pruned noisy synthetic features. Keeping {len(feature_cols)} features.")
+            
+            logger.info(f"🎯 Labeled dataset detected. Using 'target_churn' as ground truth. Features ({len(feature_cols)}): {feature_cols}")
             X_train_full = merged_df[feature_cols].fillna(0)
             y_train_full = df.groupby('user_id')['target_churn'].max().reindex(merged_df['user_id']).fillna(0).astype(int)
             feature_names = [c.replace('_', ' ').title() for c in feature_cols]
@@ -457,67 +525,68 @@ class AnalyticsEngine:
                 self.model.fit(X_train, y_train)
                 logger.info("🌲 RF fit complete ✓")
 
-            # ── CENTRALIZED CANDIDATE MODEL SELECTION ──
             candidate_models = []
             if self._is_fitted(self.model):
-                try:
-                    rf_proba = self.model.predict_proba(X_test)
-                    if rf_proba.shape[1] >= 2:
-                        rf_proba_c1 = rf_proba[:, 1]
-                        rf_auc = float(roc_auc_score(y_test, rf_proba_c1))
-                    else:
-                        rf_proba_c1 = np.full(len(X_test), 0.5)
-                        rf_auc = 0.5
-                except Exception as e:
-                    logger.warning(f"RF eval fail: {e}")
-                    rf_proba_c1 = np.full(len(y_test), 0.5)
-                    rf_auc = 0.5
-                candidate_models.append(("Random Forest", self.model, rf_auc, rf_proba_c1))
+                rf_auc = float(roc_auc_score(y_test, self.model.predict_proba(X_test)[:, 1]))
+                candidate_models.append(("Random Forest", self.model, rf_auc))
+
+            if self._is_fitted(self.hgb_model):
+                hgb_auc = float(roc_auc_score(y_test, self.hgb_model.predict_proba(X_test)[:, 1]))
+                candidate_models.append(("HistGradientBoosting", self.hgb_model, hgb_auc))
 
             if HAS_XGB and self._is_fitted(self.xgb_model):
-                try:
-                    xgb_proba = self.xgb_model.predict_proba(X_test)
-                    if xgb_proba.shape[1] >= 2:
-                        xgb_proba_c1 = xgb_proba[:, 1]
-                        xgb_auc = float(roc_auc_score(y_test, xgb_proba_c1))
-                    else:
-                        xgb_proba_c1 = np.full(len(X_test), 0.5)
-                        xgb_auc = 0.5
-                except Exception as e:
-                    logger.warning(f"XGB eval fail: {e}")
-                    xgb_proba_c1 = np.full(len(y_test), 0.5)
-                    xgb_auc = 0.5
-                candidate_models.append(("XGBoost", self.xgb_model, xgb_auc, xgb_proba_c1))
-
-            if not candidate_models:
-                # Absolute last-resort: fit vanilla RF immediately
-                logger.warning("⚠️  No fitted candidates found. Emergency RF fit.")
-                self.model.fit(X_train, y_train)
-                rf_proba = self.model.predict_proba(X_test)[:, 1]
-                try:
-                    rf_auc = float(roc_auc_score(y_test, rf_proba))
-                except Exception:
-                    rf_auc = 0.5
-                candidate_models.append(("Random Forest", self.model, rf_auc, rf_proba))
+                xgb_auc = float(roc_auc_score(y_test, self.xgb_model.predict_proba(X_test)[:, 1]))
+                candidate_models.append(("XGBoost", self.xgb_model, xgb_auc))
 
             # Select winner
-            model_name, best_raw, auc_val, y_pred_proba = max(candidate_models, key=lambda x: x[2])
-            logger.info(f"✅ Selected '{model_name}' (AUC: {auc_val:.4f}) as primary model")
+            model_name, best_raw, auc_val = max(candidate_models, key=lambda x: x[2])
+            logger.info(f"✅ Selected '{model_name}' (AUC: {auc_val:.4f})")
 
-            # ── Calibration for better probability estimates ──
+            # ── Stacking Meta-Learner (RF + XGB → LogisticRegressionCV) ──
+            if len(candidate_models) >= 2 and len(X_train) >= 300:
+                try:
+                    rf_fitted = next((m for n, m, a in candidate_models if 'Forest' in n), None)
+                    xgb_fitted = next((m for n, m, a in candidate_models if 'XGB' in n), None)
+                    if rf_fitted and xgb_fitted:
+                        from sklearn.base import clone
+                        stack = StackingClassifier(
+                            estimators=[('rf', rf_fitted), ('xgb', xgb_fitted)],
+                            final_estimator=LogisticRegressionCV(cv=3, max_iter=500, random_state=42),
+                            cv=3,
+                            passthrough=False,
+                            n_jobs=1
+                        )
+                        stack.fit(X_train, y_train)
+                        stack_proba = stack.predict_proba(X_test)[:, 1]
+                        stack_auc = float(roc_auc_score(y_test, stack_proba))
+                        logger.info(f"🏗️ Stacking AUC: {stack_auc:.4f} vs best single: {auc_val:.4f}")
+                        if stack_auc > auc_val:
+                            model_name = f"Stacking(RF+XGB)"
+                            best_raw = stack
+                            auc_val = stack_auc
+                            y_pred_proba = stack_proba
+                            logger.info(f"✅ Stacking model selected (AUC: {stack_auc:.4f})")
+                except Exception as e:
+                    logger.warning(f"Stacking failed, keeping single model: {e}")
+
             # ── Calibration for better probability estimates ──
             logger.info("Calibrating probabilities...")
             try:
                 min_class_count = int(y_train.value_counts().min()) if hasattr(y_train, 'value_counts') else int(np.bincount(y_train).min())
                 cal_cv = max(2, min(3, min_class_count))  # cv must be >= 2
                 
+                # Use Isotonic calibration for larger datasets to allow wider dynamic range (0% to 100%)
+                # Sigmoid (Platt) often squashes probabilities away from the boundaries.
+                method = 'isotonic' if len(X_train) >= 1000 else 'sigmoid'
+                
                 if min_class_count < 2:
                     logger.warning(f"Minority class has {min_class_count} sample(s) — using prefit calibration.")
-                    calibrated = CalibratedClassifierCV(best_raw, cv='prefit', method='sigmoid')
+                    calibrated = CalibratedClassifierCV(best_raw, cv='prefit', method=method)
                     calibrated.fit(X_test, y_test)
                 else:
-                    calibrated = CalibratedClassifierCV(best_raw, cv=cal_cv, method='sigmoid')
+                    calibrated = CalibratedClassifierCV(best_raw, cv=cal_cv, method=method)
                     calibrated.fit(X_train, y_train)
+                logger.info(f"✅ Calibration complete using '{method}' method.")
             except Exception as e:
                 logger.warning(f"Calibration failed: {e}. Using raw model.")
                 calibrated = best_raw
@@ -767,6 +836,7 @@ class AnalyticsEngine:
             })
 
         # 9. Model Versioning
+        metrics['rar_window'] = getattr(self, '_rar_window', 90)
         self._save_model_version(metrics, model_id=model_id)
 
         return rfm_df, fintech_drivers, metrics, mapped_shap
@@ -775,16 +845,21 @@ class AnalyticsEngine:
         # ── Defensible Customer Lifetime Value (LTV) ──
         rfm_df['predicted_ltv'] = rfm_df['monetary'] + (rfm_df['monetary_velocity'] * 365 * (1 - rfm_df['churn_probability']))
 
-        # ── Business-Grade Revenue at Risk (90-Day Exposure) ──
-        if '_is_summary' in df.columns or self._domain == 'bank_churn':
-            rfm_df['revenue_at_risk'] = rfm_df['monetary'] * rfm_df['churn_probability']
-        elif self._domain == 'tax':
-            rfm_df['revenue_at_risk'] = rfm_df['monetary'] * rfm_df['churn_probability']
+        # ── Unified Revenue at Risk: RAR = velocity × window × margin × churn_prob ──
+        # Set domain-specific window and margin
+        if self._domain == 'tax':
+            self._rar_window = 365
+            self._rar_margin = 0.05  # Only 5% of taxable income is fintech-recoverable
         elif self._domain == 'upi':
-            rfm_df['revenue_at_risk'] = rfm_df['monetary_velocity'] * 30 * rfm_df['churn_probability']
+            self._rar_window = 90
+            self._rar_margin = 1.0
         else:
-            rfm_df['revenue_at_risk'] = rfm_df['monetary_velocity'] * 90 * rfm_df['churn_probability']
-            
+            self._rar_window = 90
+            self._rar_margin = 1.0
+
+        rfm_df['revenue_at_risk'] = (
+            rfm_df['monetary_velocity'] * self._rar_window * self._rar_margin * rfm_df['churn_probability']
+        )
         # Cap at total monetary value to keep it defensible
         rfm_df['revenue_at_risk'] = rfm_df['revenue_at_risk'].clip(upper=rfm_df['monetary'].clip(lower=1))
 
@@ -852,17 +927,37 @@ class AnalyticsEngine:
         if self._domain == 'upi':
             FINTECH_LABELS.update({
                 'monetary_velocity': 'Daily Transaction Volume',
-                'frequency': 'UPI Usage Frequency',
+                'frequency': 'UPI Transaction Count',
                 'monetary': 'Total Spent via UPI',
                 'recency': 'Days Since Last Payment',
-                'description': 'Frequent Payees'
+                'description': 'Frequent Payees',
+                'avg_basket_value': 'Avg Transaction Size',
+                'ipi_median': 'Payment Interval (Days)',
+                'ipi_std': 'Payment Timing Volatility',
+                'ipi_consistency': 'Payment Habit Strength',
+                'frequency_trend': 'Transaction Frequency Trend',
+                'monetary_trend': 'Spending Volume Trend',
+                'failure_rate': 'UPI Failure Rate',
+                'recency_deviation': 'Payment Delay vs Normal',
             })
         elif self._domain == 'tax':
             FINTECH_LABELS.update({
                 'monetary_velocity': 'Daily Income Run-rate',
                 'monetary': 'Total Taxable Income',
-                'frequency': 'Payment Frequency',
-                'recency': 'Days Since Last Credit'
+                'frequency': 'Filing/Credit Frequency',
+                'recency': 'Days Since Last Credit',
+                'avg_basket_value': 'Avg TDS Per Entry',
+                'account_age': 'Tax Relationship Duration',
+                'ipi_median': 'Filing Interval (Days)',
+                'ipi_std': 'Filing Timing Volatility',
+                'ipi_consistency': 'Filing Regularity Score',
+                'frequency_trend': 'Filing Frequency Trend',
+                'monetary_trend': 'Income Volume Trend',
+                'tds_rate': 'Effective TDS Rate',
+                'income_diversity': 'Income Source Diversity',
+                'section_count': 'TDS Section Coverage',
+                'quarters_active': 'Active Quarters',
+                'recency_deviation': 'Filing Delay vs Normal',
             })
         fintech_drivers = []
         used_labels = set()
@@ -873,12 +968,24 @@ class AnalyticsEngine:
             clean_name = name.lower().replace(' ', '').replace('_', '')
             for key in sorted_keys:
                 clean_key = key.lower().replace('_', '')
-                if clean_key in clean_name:
+                # Prioritize exact match or startswith/endswith to avoid substring bleeding
+                if clean_name == clean_key or clean_name.startswith(clean_key + 'trend') or clean_name.endswith('rate') and clean_key in clean_name:
                     display = FINTECH_LABELS[key]
+                    if 'trend' in clean_name and 'trend' not in display.lower():
+                        display += ' Trend'
                     break
             
+            # Fallback for substring match if not matched above
+            if display == name:
+                for key in sorted_keys:
+                    clean_key = key.lower().replace('_', '')
+                    if clean_key in clean_name:
+                        display = FINTECH_LABELS[key]
+                        break
+
             if display in used_labels:
-                display = f"{display} ({name.replace('_', ' ').title()})"
+                # If display already used, use the raw name nicely formatted instead of appending it in parenthesis
+                display = name.replace('_', ' ').title()
             used_labels.add(display)
             
             direction = 'unknown'
@@ -897,7 +1004,7 @@ class AnalyticsEngine:
         """
         Creates features from the 'past' and labels from the 'future'.
         Uses an adaptive time window to create balanced churn labels.
-        Prevents data leakage by NOT using recency as a training feature.
+        Includes trend features (declining activity) for stronger signal.
         """
         df = df.copy()
         df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -905,15 +1012,14 @@ class AnalyticsEngine:
         min_date = df['timestamp'].min()
         total_range = (max_date - min_date).days
 
-        # Adaptive future window: 25% of total data range, capped between 30-90 days
-        # This ensures balanced churn labels for any dataset
+        # Adaptive future window — use LARGER windows for better label quality
         if future_days is None:
             if self._domain == 'tax':
-                future_days = min(180, max(60, int(total_range * 0.4))) # Longer window for tax
+                future_days = min(180, max(90, int(total_range * 0.4)))
             elif self._domain == 'upi':
-                future_days = min(30, max(7, int(total_range * 0.1))) # Shorter window for UPI
-            else:
                 future_days = min(90, max(30, int(total_range * 0.25)))
+            else:
+                future_days = min(120, max(45, int(total_range * 0.3)))
         
         logger.info(f"📊 Training split: {total_range} day range, using {future_days}-day label window")
         
@@ -922,54 +1028,105 @@ class AnalyticsEngine:
         # Observation Window (Past)
         past_df = df[df['timestamp'] < cutoff]
         # Labeling Window (Future)
-        future_users = df[df['timestamp'] >= cutoff]['user_id'].unique()
+        future_users = set(df[df['timestamp'] >= cutoff]['user_id'].unique())
 
         if past_df.empty or len(past_df['user_id'].unique()) < 5:
             return pd.DataFrame(), pd.Series(), []
 
         # ── DYNAMIC FEATURE INJECTION ──
-        # We automatically detect any extra numeric columns in the source data 
-        # (e.g., Age, Credit Score, Salary) and include them in the training features.
-        exclude_cols = ['user_id', 'timestamp', 'amount', 'target_churn', 'churned']
-        custom_numeric_cols = [c for c in past_df.select_dtypes(include=[np.number]).columns if c not in exclude_cols]
+        exclude_cols = {'user_id', 'timestamp', 'amount', 'target_churn', 'churned',
+                        'domain', '_is_summary', 'description', 'status', 'customer_id'}
+        custom_numeric_cols = [c for c in past_df.select_dtypes(include=[np.number]).columns 
+                              if c not in exclude_cols]
         
         # Calculate base RFM features
-        ref_date = max_date + timedelta(days=1)
+        ref_date = cutoff + timedelta(days=1)
         train_rfm = past_df.groupby('user_id').agg({
-            'timestamp': lambda x: (ref_date - x.max()).days,
+            'timestamp': ['max', 'min'],
             'user_id': 'count',
-            'amount': ['sum', 'mean']
+            'amount': ['sum', 'mean', 'std', 'max', 'min']
         })
-        train_rfm.columns = ['recency', 'frequency', 'monetary', 'avg_basket_value']
+        train_rfm.columns = ['last_seen', 'first_seen', 'frequency', 'monetary', 
+                            'avg_basket_value', 'monetary_std', 'max_spend', 'min_spend']
         
-        # Join custom numeric features (taking the latest/first value per user)
+        train_rfm['recency'] = (ref_date - train_rfm['last_seen']).dt.days.astype(float)
+        train_rfm['account_age_days'] = (ref_date - train_rfm['first_seen']).dt.days.astype(float).clip(lower=7)
+        train_rfm = train_rfm.drop(columns=['last_seen', 'first_seen'])
+        
+        # Fill NaN in std
+        train_rfm['monetary_std'] = train_rfm['monetary_std'].fillna(0)
+        
+        # Join custom numeric features
         if custom_numeric_cols:
-            custom_features = past_df.groupby('user_id')[custom_numeric_cols].first()
-            # ── Defensive Join ──
-            # Only join columns that don't already exist in train_rfm
+            custom_features = past_df.groupby('user_id')[custom_numeric_cols].mean()
             overlap = [c for c in custom_features.columns if c in train_rfm.columns]
             if overlap:
                 custom_features = custom_features.drop(columns=overlap)
             train_rfm = train_rfm.join(custom_features)
         
-        # Calculate derived behavioral features
+        # ── IPI Features ──
         temp_df = past_df[['user_id', 'timestamp']].sort_values(['user_id', 'timestamp'])
-
         temp_df['diff'] = temp_df.groupby('user_id')['timestamp'].diff().dt.days
         ipi_data = temp_df.groupby('user_id')['diff'].agg(
             ipi_median='median',
-            ipi_std='std'
+            ipi_std='std',
+            ipi_max='max'
         ).fillna(100)
         
         ipi_data['ipi_consistency'] = 1 / (1 + ipi_data['ipi_std'] / 30.0)
         train_rfm = train_rfm.join(ipi_data)
         
-        first_seen = past_df.groupby('user_id')['timestamp'].min()
-        # PRODUCTION FIX: Conservative velocity denominator (7-day floor)
-        # Prevents extreme revenue-at-risk projections for very new users.
-        train_rfm['account_age_days'] = (ref_date - first_seen).dt.days.astype(float).clip(lower=7)
         train_rfm['monetary_velocity'] = train_rfm['monetary'] / train_rfm['account_age_days']
         train_rfm['recency_deviation'] = (train_rfm['recency'] - train_rfm['ipi_median']).clip(lower=0)
+
+        # ── TREND FEATURES: Compare recent half vs old half ──
+        # This captures declining/increasing activity which is the strongest churn signal
+        obs_midpoint = past_df['timestamp'].min() + (cutoff - past_df['timestamp'].min()) / 2
+        
+        old_half = past_df[past_df['timestamp'] < obs_midpoint]
+        new_half = past_df[past_df['timestamp'] >= obs_midpoint]
+        
+        old_freq = old_half.groupby('user_id')['amount'].count().rename('old_frequency')
+        new_freq = new_half.groupby('user_id')['amount'].count().rename('new_frequency')
+        old_monetary = old_half.groupby('user_id')['amount'].sum().rename('old_monetary')
+        new_monetary = new_half.groupby('user_id')['amount'].sum().rename('new_monetary')
+        
+        train_rfm = train_rfm.join(old_freq).join(new_freq).join(old_monetary).join(new_monetary)
+        train_rfm[['old_frequency', 'new_frequency', 'old_monetary', 'new_monetary']] = \
+            train_rfm[['old_frequency', 'new_frequency', 'old_monetary', 'new_monetary']].fillna(0)
+        
+        # Trend ratios — declining users have ratio < 1
+        train_rfm['frequency_trend'] = (train_rfm['new_frequency'] + 1) / (train_rfm['old_frequency'] + 1)
+        train_rfm['monetary_trend'] = (train_rfm['new_monetary'] + 1) / (train_rfm['old_monetary'] + 1)
+        # Drop the raw components to avoid multicollinearity
+        train_rfm = train_rfm.drop(columns=['old_frequency', 'new_frequency', 'old_monetary', 'new_monetary'])
+
+        # ── Domain-Specific Features ──
+        if 'is_failure' in past_df.columns:
+            fail_rate = past_df.groupby('user_id')['is_failure'].mean().rename('failure_rate')
+            train_rfm = train_rfm.join(fail_rate)
+            train_rfm['failure_rate'] = train_rfm['failure_rate'].fillna(0)
+
+        # ── Interaction & Log Features ──
+        train_rfm['frequency_velocity'] = train_rfm['frequency'] / train_rfm['account_age_days']
+        train_rfm['monetary_ratio'] = train_rfm['monetary'] / (train_rfm['max_spend'] + 1e-9)
+        train_rfm['ipi_ratio'] = train_rfm['recency'] / (train_rfm['ipi_median'] + 1e-9)
+        train_rfm['monetary_per_txn'] = train_rfm['monetary'] / (train_rfm['frequency'] + 1e-9)
+        
+        for col in ['monetary', 'frequency', 'avg_basket_value', 'monetary_velocity', 'max_spend']:
+            if col in train_rfm.columns:
+                train_rfm[f'log_{col}'] = np.log1p(train_rfm[col].clip(lower=0))
+            
+        train_rfm['recency_x_ipi'] = train_rfm['recency'] * train_rfm['ipi_median']
+        train_rfm['monetary_x_frequency'] = train_rfm['monetary'] * train_rfm['frequency']
+        
+        # Recency percentile — robust rank-based feature
+        train_rfm['recency_pct'] = train_rfm['recency'].rank(pct=True)
+        
+        # Recent spending ratio
+        recent_cutoff = past_df['timestamp'].min() + timedelta(days=max(int(total_range * 0.7), 1))
+        recent_spend = past_df[past_df['timestamp'] >= recent_cutoff].groupby('user_id')['amount'].sum()
+        train_rfm['recent_spend_ratio'] = (recent_spend / (train_rfm['monetary'] + 1e-9)).fillna(0)
 
         # Label: Churned if NOT in future_users
         train_rfm['churned'] = (~train_rfm.index.isin(future_users)).astype(int)
@@ -979,8 +1136,6 @@ class AnalyticsEngine:
         # PRODUCTION GUARD: Ensure we have both classes
         if train_rfm['churned'].nunique() < 2:
             logger.warning(f"⚠️  Labeling resulted in single class ({train_rfm['churned'].unique()}). Adjusting threshold...")
-            # If everyone is labeled as churned, pick the top 50% most recent as 'retained' for training purposes
-            # If everyone is labeled as retained, pick the bottom 20% least recent as 'churned'
             if churn_rate > 0.5:
                 threshold = train_rfm['recency'].median()
                 train_rfm['churned'] = (train_rfm['recency'] > threshold).astype(int)
@@ -1024,7 +1179,15 @@ class AnalyticsEngine:
             # Use a smaller sample for faster dashboard updates
             sample_size = min(200, len(X))
             X_sample = X.sample(sample_size, random_state=42) if len(X) > sample_size else X
-            explainer = shap.TreeExplainer(self._raw_model)
+            # Use a model that TreeExplainer supports — if raw_model is a 
+            # StackingClassifier, fall back to the best base estimator
+            shap_model = self._raw_model
+            from sklearn.ensemble import StackingClassifier
+            if isinstance(shap_model, StackingClassifier):
+                # Pick the first base estimator (RF or XGB) for SHAP
+                shap_model = shap_model.estimators_[0]
+                logger.info(f"SHAP: Using base estimator '{type(shap_model).__name__}' from stacking model")
+            explainer = shap.TreeExplainer(shap_model)
             shap_values = explainer.shap_values(X_sample)
 
             # Handle different SHAP output formats (list for multi-class/binary, array for regression/some models)
@@ -1194,10 +1357,16 @@ class AnalyticsEngine:
             'spending': 'monetary',
             'wallet_share': 'monetary',
             'amount': 'monetary',
+            'failure_rate': 'failure_rate',
+            'technical_failures': 'failure_rate',
+            'tds_rate': 'tds_rate',
+            'tax_burden': 'tds_rate',
+            'section_count': 'section_count',
+            'tax_diversity': 'section_count',
         }
         feature_lower = str(feature).strip().lower()
         feature_key = feature_aliases.get(feature_lower)
-        if feature_key not in ['recency', 'frequency', 'monetary']:
+        if not feature_key:
             return {'error': f'Invalid feature: {feature}'}
 
         seg_mask = rfm_df['segment'] == segment
@@ -1288,6 +1457,9 @@ class AnalyticsEngine:
                 'recency': 'Recency (Days Since Last Purchase)',
                 'frequency': 'Purchase Frequency (Order Count)',
                 'monetary': 'Spending Engagement (Wallet Share)',
+                'failure_rate': 'Transaction Failure Rate (%)',
+                'tds_rate': 'TDS Compliance Rate',
+                'section_count': 'Tax Section Diversity',
             }.get(feature_key, feature_key),
             'delta_pct': delta_pct,
             'original_churn': float(original_churn),
@@ -1473,15 +1645,9 @@ class AnalyticsEngine:
         if 'segment' in rfm_df.columns:
             rfm_df = rfm_df.drop(columns=['segment'])
 
-        # Ensure r_scores and scores are treated as 1D arrays
-        # Use explicit list assignment to prevent Pandas multi-column expansion
+        # Use centralized _assign_segment for consistency with calculate_rfm
         rfm_df['segment'] = [
-            'Champions' if (scores[i] >= 13 and r_scores[i] >= 4) else
-            'Loyalists' if (scores[i] >= 10 and r_scores[i] >= 3) else
-            'At Risk' if (r_scores[i] <= 2 and scores[i] >= 8) else
-            'Promising' if (scores[i] >= 7) else
-            'Needs Attention' if (scores[i] >= 4) else
-            'Hibernating'
+            self._assign_segment(scores[i], int(r_scores[i]))
             for i in range(len(rfm_df))
         ]
         rfm_df['segment'] = rfm_df['segment'].astype(str)
@@ -1763,7 +1929,7 @@ class AnalyticsEngine:
             
             # ── Enterprise Safety: Exclude Tax/Metadata columns from Strategy ──
             # We don't want to suggest 'Increasing TDS' or 'Changing PAN' as a strategy.
-            if any(x in raw_feat for x in ['tds', 'pan', 'tan', 'section', 'fy', 'quarter', 'id', 'ts']):
+            if any(x in raw_feat for x in ['tds', 'pan', 'tan', 'section', 'fy', 'quarter', 'id', 'ts', 'cluster', 'rank', 'score', 'month', 'year']):
                 continue
             
             # ── H: Inactivity / Recency ──
@@ -1927,15 +2093,18 @@ class AnalyticsEngine:
         user_agg['last_purchase_days'] = (current_date - user_agg['last_seen']).dt.days
         
         # ── Business-Grade Lifecycle Logic ──
-        # We prioritize actual tenure (age of account) over raw transaction count 
-        # to support both transactional and summary datasets.
+        # Uses dataset_max_date (not pd.Timestamp.now()) for consistency
+        dataset_max_date = current_date  # already computed from data
+        thirty_days_ago = dataset_max_date - pd.Timedelta(days=30)
+        
         conditions = [
-            (user_agg['max_gap'] > 90) & (user_agg['last_purchase_days'] < 30), # Reactivated
-            (user_agg['tenure'] < 30),                                         # New (Joined in last month)
-            (user_agg['txn_count'] < 2) & (user_agg['tenure'] < 60),            # New (Single purchase, low tenure)
-            (user_agg['tenure'] < 120)                                         # Active (Growing)
+            (user_agg['max_gap'] > 90) & (user_agg['last_purchase_days'] < 30),  # Reactivated
+            (user_agg['tenure'] < 30),                                            # New (joined recently)
+            (user_agg['txn_count'] == 1) & (user_agg['tenure'] < 60),            # New (single purchase, low tenure)
+            (user_agg['first_seen'] >= thirty_days_ago) & (user_agg['txn_count'] <= 3),  # New (recent first_seen)
+            (user_agg['tenure'] < 120)                                            # Active (Growing)
         ]
-        choices = ['Reactivated', 'New', 'New', 'Active']
+        choices = ['Reactivated', 'New', 'New', 'New', 'Active']
         user_agg['lifecycle'] = np.select(conditions, choices, default='Established')
         
         return user_agg.reset_index()[['user_id', 'lifecycle', 'first_seen', 'tenure']]
