@@ -54,7 +54,7 @@ describe('ExecutiveDashboard', () => {
 
   it('renders all 4 KPI cards', () => {
     expect(screen.getAllByText(/Market Footprint/i)[0]).toBeInTheDocument();
-    expect(screen.getAllByText(/Risk Intensity/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/Baseline Churn Risk/i)[0]).toBeInTheDocument();
     expect(screen.getAllByText(/Revenue Exposure/i)[0]).toBeInTheDocument();
     expect(screen.getAllByText(/Recovery Capture/i)[0]).toBeInTheDocument();
   });

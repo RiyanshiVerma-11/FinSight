@@ -260,7 +260,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                   Live System Active
                 </span>
                 <span style={{ color: 'rgba(255,255,255,0.4)' }}>•</span>
-                <span style={{ color: '#ffffff', opacity: 0.9 }}>{totalUsers.toLocaleString()} High-Value Profiles Analyzed</span>
+                <span style={{ color: '#ffffff', opacity: 0.9 }}>{`${totalUsers.toLocaleString()} High-Value Profiles Analyzed`}</span>
                 {s?.metrics?.roc_auc ? (
                   <span style={{ 
                     fontSize: '0.65rem', fontWeight: 900, 
@@ -272,7 +272,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                     display: 'flex', alignItems: 'center', gap: '0.3rem'
                   }}>
                     {s.metrics.roc_auc > 0.75 ? <ShieldCheck size={10} /> : <AlertTriangle size={10} />}
-                    {s.metrics.roc_auc > 0.75 ? 'High Confidence' : s.metrics.roc_auc > 0.60 ? 'Moderate Confidence' : 'Low Confidence'} (AUC: {(s.metrics.roc_auc * 100).toFixed(1)}%)
+                    {`${s.metrics.roc_auc > 0.75 ? 'High Confidence' : s.metrics.roc_auc > 0.60 ? 'Moderate Confidence' : 'Low Confidence'} (AUC: ${(s.metrics.roc_auc * 100).toFixed(1)}%)`}
                   </span>
                 ) : null}
               </div>
