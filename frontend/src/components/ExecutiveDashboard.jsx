@@ -341,7 +341,9 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', fontWeight: 800 }}>
                       <div style={{ background: driftStatus === 'STABLE' ? '#6366f1' : '#f43f5e', width: 10, height: 10, borderRadius: '50%' }} />
                       <span style={{ color: 'var(--text-muted)' }}>Market Stability:</span> 
-                      <span style={{ color: driftStatus === 'STABLE' ? '#6366f1' : '#f43f5e' }}>{driftStatus}</span>
+                      <FormulaTooltip formula="Market Stability (Data Drift) measures if your current users' behavior has shifted away from the historical data the AI was trained on. 'STABLE' means the model is highly reliable; 'DRIFT' means you should consider retraining the AI." color={driftStatus === 'STABLE' ? '#6366f1' : '#f43f5e'}>
+                        <span style={{ color: driftStatus === 'STABLE' ? '#6366f1' : '#f43f5e', cursor: 'help' }}>{driftStatus}</span>
+                      </FormulaTooltip>
                    </div>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', fontWeight: 800 }}>
                       <AlertTriangle size={18} color="#f59e0b" />
@@ -370,14 +372,14 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
               icon: AlertTriangle, label: 'Baseline Churn Risk', value: `${churnPct}%`, 
               sub: 'Unweighted Mean', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',
               desc: `Average churn probability across all ${totalUsers} users. Revenue-weighted: ${revenueWeightedPct}%.`,
-              logic: `Computed from: Mean(All User Churn Probabilities). This is the unbiased baseline risk — the average probability that any given user will churn. Revenue-Weighted Risk (${revenueWeightedPct}%) factors in monetary value.`
+              logic: `[WHY THIS MATTERS]: This is the primary indicator of your overall churn rate. It represents the probability that any given customer will leave in the next 30-180 days. [CALCULATION]: Mean(All User Churn Probabilities).`
             },
             { 
               id: 'exposure',
               icon: DollarSign, label: 'Revenue Exposure', value: formatCurrency(revAtRisk), 
               sub: 'Capital at Stake', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',
               desc: 'Total revenue potentially lost if no action taken.',
-              logic: `Computed from: Σ(Daily Velocity × 90 Days × Churn Prob) for every user. Reflects 90-day projected capital risk. Exact: ${formatExactCurrency(revAtRisk)}`
+              logic: `[WHY THIS MATTERS]: This turns "risk percentages" into real money. It helps you prioritize high-value users who are at risk. [CALCULATION]: Σ(Spending Velocity × 90 Days × Churn Prob).`
             },
             { 
               id: 'capture',
@@ -385,7 +387,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
               sub: 'Actionable ROI', color: '#10b981', bg: 'rgba(16,185,129,0.08)', 
               action: 'simulation',
               desc: 'Revenue we can save via AI-driven interventions.',
-              logic: `Computed from: (Revenue Exposure of At-Risk Segments) × (Model Accuracy × 0.5). Simulates a ${recoveryEfficiency}% risk reduction. Exact: ${formatExactCurrency(potentialSaved)}`
+              logic: `[WHY THIS MATTERS]: This is your goal. It represents how much money you can "claw back" by running the recommended campaigns. [CALCULATION]: (Revenue Exposure) × (AI Model Accuracy × 0.5).`
             },
           ].map(({ id, icon: Icon, label, value, sub, color, bg, action, desc, logic }, i) => (
             <FormulaTooltip key={i} formula={logic} color={color}>
@@ -473,6 +475,9 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                       <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#10b981', opacity: 0.2, border: '2px solid #10b981' }} /> AI Optimized
                    </div>
                 </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '1.5rem', padding: '0.85rem', background: 'rgba(99,102,241,0.05)', borderRadius: '8px', borderLeft: '3px solid #6366f1' }}>
+                   <strong>How to read this:</strong> The red area shows projected churn risk if no action is taken. The green area shows the reduced risk after applying AI-recommended interventions. The gap between them represents the revenue you can save!
+                </div>
              </div>
 
              {/* Bottom Row: Persona Distribution & Key Metrics */}
@@ -508,12 +513,18 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                          </div>
                       ))}
                    </div>
+                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '1rem', padding: '0.75rem', background: 'rgba(16,185,129,0.05)', borderRadius: '8px', borderLeft: '3px solid #10b981' }}>
+                      <strong>How to read this:</strong> This pie chart breaks down our user base into behavioral segments. Larger slices mean more users fall into that specific persona category.
+                   </div>
                 </div>
 
                 <div style={{ background: 'var(--bg-input)', padding: '1.5rem', borderRadius: '24px', border: '1px solid var(--border)' }}>
                    <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <TrendingDown size={16} color="#f43f5e" />
                       Avg. Churn Probability (Per Segment)
+                   </div>
+                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', padding: '0.75rem', background: 'rgba(244,63,94,0.05)', borderRadius: '8px', borderLeft: '3px solid #f43f5e' }}>
+                      <strong>How to read this:</strong> These progress bars show the average risk level for each segment. Longer bars indicate a higher chance that users in this group will leave. Focus your retention efforts on the segments with the longest bars!
                    </div>
                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                        {segChurn.slice(0, 5).map((seg, i) => (

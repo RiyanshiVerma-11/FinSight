@@ -91,7 +91,7 @@ body::after {
 .app-container {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 1.5rem 2rem 20rem;
+  padding: 2.5rem 2rem 20rem; /* Increased top padding */
 }
 
 /* ───────── Header ───────── */
@@ -106,6 +106,7 @@ body::after {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
   position: relative;
+  z-index: 1000;
 }
 .header::before {
   content: '';

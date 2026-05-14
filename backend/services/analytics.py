@@ -720,37 +720,7 @@ class AnalyticsEngine:
         except Exception as e:
             logger.error(f"Confusion matrix error: {e}")
 
-        try:
-            drift_features = {}
-            p_values = []
-            
-            # IMPROVED DRIFT DETECTION:
-            # If we have a temporal split, compare 'Historical' vs 'Recent' distributions
-            # Otherwise compare Training vs Test (Random)
-            for i, fname in enumerate(feature_names[:min(len(feature_names), X_train.shape[1])]):
-                hist_col = X_train.iloc[:, i].values if hasattr(X_train, 'iloc') else X_train[:, i]
-                recent_col = X_test.iloc[:, i].values if hasattr(X_test, 'iloc') else X_test[:, i]
-                
-                # If these are exactly the same size and were shuffled, p-value will be high.
-                # But if X_test contains the 'more recent' users from a temporal split, 
-                # we will detect if their behavior (monetary/frequency) has shifted.
-                ks_stat, p_val = ks_2samp(hist_col, recent_col)
-                drift_features[fname] = {
-                    'ks_statistic': round(float(ks_stat), 4),
-                    'p_value': round(float(p_val), 4),
-                    'drifted': bool(p_val < 0.05)
-                }
-                p_values.append(p_val)
-            
-            avg_p = float(np.min(p_values)) if p_values else 1.0 # Be conservative, use min p
-            metrics['drift'] = {
-                'features': drift_features,
-                'avg_p_value': round(avg_p, 4),
-                'status': 'HIGH DRIFT' if avg_p < 0.01 else 'LOW DRIFT' if avg_p < 0.05 else 'STABLE'
-            }
-        except Exception as e:
-            logger.error(f"Drift computation error: {e}")
-            metrics['drift'] = {'avg_p_value': 1.0, 'status': 'N/A', 'features': {}}
+
 
         # 5. Model Comparison — only use verified-fitted models; no stale variable refs
         try:
@@ -792,6 +762,43 @@ class AnalyticsEngine:
         logger.info(f"✅ predict_proba complete. Risk range: [{probs.min():.3f}, {probs.max():.3f}]")
 
         rfm_df['churn_probability'] = probs
+
+        # ── PRODUCTION-GRADE DRIFT DETECTION (Past vs Present) ──
+        try:
+            drift_features = {}
+            p_values = []
+            
+            # Identify a 'recent' slice from the current features (last 20% of users)
+            # This represents the data the model is currently scoring.
+            inference_data = current_features.tail(max(100, int(len(current_features) * 0.2)))
+            
+            for fname in feature_columns:
+                if fname in X_train_full.columns and fname in inference_data.columns:
+                    hist_col = X_train_full[fname].values
+                    recent_col = inference_data[fname].values
+                    
+                    # KS Test: Null hypothesis is that the two samples come from the same distribution
+                    ks_stat, p_val = ks_2samp(hist_col, recent_col)
+                    
+                    drift_features[fname.replace('_', ' ').title()] = {
+                        'ks_statistic': round(float(ks_stat), 4),
+                        'p_value': round(float(p_val), 4),
+                        'drifted': bool(p_val < 0.05)
+                    }
+                    p_values.append(p_val)
+            
+            # Use the most significant drift (min p-value) as the overall status
+            avg_p = float(np.min(p_values)) if p_values else 1.0
+            
+            metrics['drift'] = {
+                'features': drift_features,
+                'avg_p_value': round(avg_p, 4),
+                'status': 'HIGH DRIFT' if avg_p < 0.01 else 'LOW DRIFT' if avg_p < 0.05 else 'STABLE'
+            }
+            logger.info(f"📊 Drift Check: Status={metrics['drift']['status']} (p={avg_p:.4f})")
+        except Exception as e:
+            logger.error(f"Drift computation error: {e}")
+            metrics['drift'] = {'avg_p_value': 1.0, 'status': 'STABLE (fallback)', 'features': {}}
         
         # Preserve all features in rfm_df for per-user SHAP and what-if analysis
         for col in feature_columns:

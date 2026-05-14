@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, ScatterChart, Scatter, ZAxis
+  PieChart, Pie, Cell, Legend, ScatterChart, Scatter, ZAxis, ReferenceLine
 } from 'recharts';
 import {
   Users, TrendingDown, TrendingUp, Lightbulb,
@@ -15,6 +15,7 @@ import { motion } from 'framer-motion';
 
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import confetti from 'canvas-confetti';
 import ShapModal from './components/ShapModal';
 import WhatIfPanel from './components/WhatIfPanel';
 import LiveTicker from './components/LiveTicker';
@@ -22,6 +23,7 @@ import ExecutiveDashboard from './components/ExecutiveDashboard';
 import InterventionEngine from './components/InterventionEngine';
 import FormulaTooltip from './components/FormulaTooltip';
 import ActiveExperiments from './components/ActiveExperiments';
+import ModelIntelligenceGuide from './components/ModelIntelligenceGuide';
 
 const Info = (props) => (
   <svg 
@@ -205,6 +207,7 @@ function App() {
   const [error, setError] = useState(null);
   const [globalSimResult, setGlobalSimResult] = useState(null);
   const [dataFetched, setDataFetched] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     fetchDatasets();
@@ -269,6 +272,12 @@ function App() {
     try {
       const r = await axios.get(`${API_URL}/llm-hypotheses`);
       setLlmHypotheses(r.data);
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#f59e0b', '#fbbf24', '#fcd34d']
+      });
     } catch { setLlmHypotheses(null); }
     setLlmLoading(false);
   };
@@ -314,6 +323,12 @@ function App() {
       }
 
       pdf.save(`FinSight_Board_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#6366f1', '#10b981', '#f59e0b', '#ec4899']
+      });
     } catch (error) {
       console.error("PDF Export failed:", error);
       alert("Failed to generate PDF. The dashboard might be too large.");
@@ -361,6 +376,7 @@ function App() {
     <div className="app-container">
 
       <ShapModal userId={shapUser} onClose={() => setShapUser(null)} />
+      <ModelIntelligenceGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
 
       <header className="header">
         <div className="logo">
@@ -379,6 +395,9 @@ function App() {
             <input type="file" hidden onChange={handleFileUpload} accept=".csv,.xlsx" />
           </label>
           <button className="btn-outline" onClick={fetchDemoData}><Database size={17} />Demo Data</button>
+          <button className="btn-outline" style={{ border: '1px solid #6366f1', color: '#6366f1' }} onClick={() => setShowGuide(true)}>
+            <Brain size={17} /> Intelligence Guide
+          </button>
           {data && (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button className="btn-outline" onClick={exportCSV}><Download size={17} /> CSV</button>
@@ -543,6 +562,9 @@ function App() {
               <div className="tour-segments" style={{ gridColumn: 'span 8' }}>
                 <Section span={12} delay={0} initial={false}>
                   <h2><Activity size={20} style={{ color: '#6366f1' }} /> User Segmentation Intelligence</h2>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+                    <strong>How to read this:</strong> This bar chart shows the total count of users grouped by their behavioral persona. Use this to identify which segments form your largest audience.
+                  </p>
                   <div className="chart-wrapper" style={{ background: 'transparent' }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={segmentData}>
@@ -566,6 +588,9 @@ function App() {
 
               <Section span={4} delay={0.2}>
                 <h2>Lifecycle Distribution</h2>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                  <strong>How to read this:</strong> Shows the proportion of users at different stages of their journey (e.g., New, Active). Hover over a slice to see exact numbers.
+                </p>
                 <div className="chart-wrapper">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -633,6 +658,19 @@ function App() {
               <Section span={6} delay={0.34}>
                 <LiveTicker />
               </Section>
+
+              <div style={{ gridColumn: 'span 12', marginTop: '1rem', padding: '1.5rem', background: 'rgba(99,102,241,0.03)', borderRadius: '1rem', border: '1px dashed rgba(99,102,241,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <Brain size={24} color="#6366f1" />
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Confused about the metrics?</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Read our Intelligence Guide to understand Behavioral Fingerprinting, SHAP, and RAR.</div>
+                  </div>
+                </div>
+                <button className="btn-primary" onClick={() => setShowGuide(true)} style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}>
+                  Open Intelligence Guide
+                </button>
+              </div>
             </>
           )}
 
@@ -641,16 +679,35 @@ function App() {
               <div style={{ gridColumn: 'span 6' }}>
                 <Section span={12} delay={0} className="tour-shap" initial={false}>
                   <h2><Brain size={20} style={{ color: '#8b5cf6' }} /> SHAP Feature Impact</h2>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                    <strong>How to read this:</strong> This chart reveals the hidden factors driving churn. Red bars pushing right increase the risk of a user leaving, while green bars pushing left indicate factors keeping them loyal. The longer the bar, the stronger the impact!
+                  </p>
                   <div className="chart-wrapper">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={shapData.map(s => ({ ...s, shap_val: +(s.importance || 0).toFixed(4) }))} layout="vertical">
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                        <XAxis type="number" tick={{ fontSize: 11 }} />
-                        <YAxis type="category" dataKey="feature" width={180} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />
+                      <BarChart 
+                        data={shapData.slice(0, 15).map(s => {
+                          const isIncrease = s.direction === 'increases_churn';
+                          return { 
+                            ...s, 
+                            shap_val: isIncrease ? Math.abs(s.importance || 0) : -Math.abs(s.importance || 0) 
+                          };
+                        })} 
+                        layout="vertical"
+                        margin={{ left: 20, right: 30 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} vertical={true} />
+                        <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} />
+                        <YAxis type="category" dataKey="feature" width={160} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 700 }} axisLine={false} tickLine={false} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Bar dataKey="shap_val" radius={[0, 6, 6, 0]}>
-                          {shapData.map((s, i) => <Cell key={i} fill={s.direction === 'increases_churn' ? '#f43f5e' : '#10b981'} />)}
+                        <Bar dataKey="shap_val" radius={[0, 4, 4, 0]}>
+                          {shapData.slice(0, 15).map((s, i) => (
+                            <Cell 
+                              key={i} 
+                              fill={s.direction === 'increases_churn' ? '#f43f5e' : '#10b981'} 
+                            />
+                          ))}
                         </Bar>
+                        <ReferenceLine x={0} stroke="#64748b" strokeWidth={2} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -753,20 +810,44 @@ function App() {
 
               {productMix?.overall && (
                 <>
-                  <Section span={6} delay={0.34}>
-                    <h2><ShoppingBag size={20} style={{ color: '#f59e0b' }} /> Product Mix Analysis</h2>
-                    <div className="chart-wrapper">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={(productMix.overall || []).map(p => ({ ...p, shortName: (p.product || '').length > 22 ? (p.product || '').substring(0, 22) + '...' : (p.product || '') }))} margin={{ bottom: 30 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                          <XAxis dataKey="shortName" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 10, fill: '#64748b' }} interval={0} />
-                          <YAxis tick={{ fontSize: 11 }} />
-                          <Tooltip content={<CustomTooltip />} />
-                          <Bar dataKey="count" radius={[6, 6, 0, 0]} name="Orders">
-                            {productMix.overall.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
+                  <Section span={12} delay={0.34}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                      <h2 style={{ margin: 0 }}><ShoppingBag size={20} style={{ color: '#f59e0b' }} /> Top Products Correlated with Churn</h2>
+                      <span className="version-badge" style={{ background: '#f59e0b' }}>AI INSIGHTS</span>
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+                      <strong>How to read this:</strong> This table ranks products by transaction volume and maps their statistical correlation to user churn. Identify which platforms are associated with high-risk behavior patterns.
+                    </p>
+                    
+                    <div className="intervention-table-wrap">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '40%' }}>Product Name</th>
+                            <th style={{ width: '20%' }}>Orders</th>
+                            <th style={{ width: '40%' }}>Risk Correlation</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(productMix.overall || []).map((p, i) => (
+                            <tr key={i}>
+                              <td style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{p.product}</td>
+                              <td style={{ fontWeight: 600 }}>{p.count.toLocaleString()}</td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <div style={{ 
+                                    width: 8, height: 8, borderRadius: '50%', 
+                                    background: p.correlation === 'Positive' ? '#f43f5e' : p.correlation === 'Negative' ? '#10b981' : '#94a3b8' 
+                                  }} />
+                                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                    {p.risk_correlation || 'Neutral behavioral footprint.'}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </Section>
                 </>
@@ -778,6 +859,9 @@ function App() {
                   <h2 style={{ margin: 0 }}>Model Health & Data Drift</h2>
                   <span className="version-badge" style={{ background: '#10b981' }}>LIVE MONITOR</span>
                 </div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+                  <strong>How to read this:</strong> The ROC-AUC score measures the AI's accuracy in predicting churn (closer to 100% is better). Data drift alerts you if user behavior has changed so much that the AI might need retraining.
+                </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', background: 'var(--bg-input)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
@@ -840,6 +924,32 @@ function App() {
                     </div>
                   </div>
 
+                  <div style={{ marginTop: '1.25rem', padding: '1.15rem', background: 'rgba(99,102,241,0.06)', borderRadius: '1.25rem', border: '1px solid rgba(99,102,241,0.12)' }}>
+                    <h4 style={{ margin: '0 0 0.65rem 0', fontSize: '0.82rem', fontWeight: 900, color: '#6366f1', display: 'flex', alignItems: 'center', gap: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <Lightbulb size={15} /> Intelligence Guide: Model Health
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <div style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.75rem', minWidth: '70px' }}>ROC-AUC:</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                          The AI's "Grade". <strong>100%</strong> means perfect predictions. <strong>80-90%</strong> is world-class for financial churn models. It measures how well the AI distinguishes between high and low risk users.
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: '0.75rem', minWidth: '70px' }}>DATA DRIFT:</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                          The "Stability" check. If user behavior changes (e.g., a new competitor launches), the AI's old training may become stale. <strong>Stable</strong> means the model is still highly reliable.
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <div style={{ fontWeight: 800, color: '#10b981', fontSize: '0.75rem', minWidth: '70px' }}>CONFUSION:</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                          Shows the <strong>True Positives</strong> (correctly identified churners) vs. <strong>False Positives</strong> (users who were fine but AI flagged them). Balancing these helps optimize marketing spend.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '1.25rem' }}>
                     <div style={{ padding: '0.85rem', background: 'rgba(16,185,129,0.08)', borderRadius: '0.75rem', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.8rem', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                       <CheckCircle size={16} />
@@ -895,7 +1005,14 @@ function App() {
                         ? `Because ${driver.feature} ${driver.direction === 'increases_churn' ? '↑' : '↓'} (${(driver.importance * 100).toFixed(0)}% impact)`
                         : null;
                       return (
-                        <div key={i} className="hypothesis-card" style={{ borderLeft: `4px solid ${COLORS[i % COLORS.length]}` }}>
+                        <motion.div 
+                          key={i} 
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4, delay: i * 0.15 }}
+                          className="hypothesis-card" 
+                          style={{ borderLeft: `4px solid ${COLORS[i % COLORS.length]}` }}
+                        >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                             <span className="badge">{h.driver || h.title}</span>
                             {shapContext && (
@@ -914,7 +1031,7 @@ function App() {
                             {h.stat && <span className="badge">{h.stat}</span>}
                             <span className="badge" style={{ color: '#059669' }}><FlaskConical size={11} /> {h.test || h.action}</span>
                           </div>
-                        </div>
+                        </motion.div>
                       );
                     })}
                   </div>
@@ -929,6 +1046,9 @@ function App() {
                 <div style={{ gridColumn: 'span 12' }} className="tour-cohort">
                   <Section span={12} delay={0} initial={false}>
                     <h2><CalendarRange size={20} style={{ color: '#06b6d4' }} /> Cohort Retention Heatmap</h2>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                      <strong>How to read this:</strong> This table shows how well we retain users over time. Rows are groups of users joining in the same month (cohort). Columns (M0, M1, etc.) show the percentage of users still active after that many months. Greener cells mean better retention!
+                    </p>
                     <div style={{ overflowX: 'auto' }}>
                       <table className="data-table">
                         <thead>

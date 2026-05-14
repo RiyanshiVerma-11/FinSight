@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import confetti from 'canvas-confetti';
 import {
   Sliders, Play, DollarSign, TrendingDown, Users, ArrowRight,
   Zap, Gift, Bell, Smartphone, Tag, Trophy, FlaskConical, Info
@@ -180,6 +181,14 @@ export default function WhatIfPanel({ segments, segChurn, domain, onSimulationRe
           is_profitable: profitable
         });
         setRoiExplanation(explainR.data.explanation);
+        if (profitable) {
+          confetti({
+            particleCount: 100,
+            spread: 60,
+            origin: { y: 0.7 },
+            colors: ['#10b981', '#34d399', '#fcd34d']
+          });
+        }
       } catch (ex) {
         console.error('LLM Explanation error', ex);
       }
