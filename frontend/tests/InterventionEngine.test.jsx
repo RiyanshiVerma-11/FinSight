@@ -35,19 +35,21 @@ describe('InterventionEngine', () => {
   });
 
   // ── Rendering ───────────────────────────────────────────────────────────
-  it('renders the section heading', () => {
+  it('renders the section heading', async () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText(/Intervention Engine/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Intervention Engine/i)).toBeInTheDocument();
   });
 
-  it('renders AI-OPTIMIZED or DATA-DRIVEN badge', () => {
+
+  it('renders AI-OPTIMIZED or DATA-DRIVEN badge', async () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText(/DATA-DRIVEN/i)).toBeInTheDocument();
+    expect(await screen.findByText(/DATA-DRIVEN/i)).toBeInTheDocument();
   });
 
-  it('renders table headers: Strategic Persona, Scale, Business Impact, Recommended Action', () => {
+
+  it('renders table headers: Strategic Persona, Scale, Business Impact, Recommended Action', async () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText(/Strategic Persona/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Strategic Persona/i)).toBeInTheDocument();
     expect(screen.getByText(/Scale/i)).toBeInTheDocument();
     expect(screen.getByText(/Business Impact/i)).toBeInTheDocument();
     expect(screen.getByText(/Recommended Action/i)).toBeInTheDocument();
@@ -55,54 +57,66 @@ describe('InterventionEngine', () => {
     expect(screen.getAllByText(/Recovery ROI/i)[0]).toBeInTheDocument();
   });
 
+
   // ── Segment rows ────────────────────────────────────────────────────────
-  it('renders a row for each segment', () => {
+  it('renders a row for each segment', async () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
+    // Wait for initial load
+    await screen.findByText(/Intervention Engine/i);
     Object.keys(MOCK_SEGMENTS).forEach(seg => {
       // Use regex as the text might be part of a larger string or broken into nodes
       expect(screen.getAllByText(new RegExp(seg, 'i'))[0]).toBeInTheDocument();
     });
   });
 
-  it('shows user counts for each segment', () => {
+
+  it('shows user counts for each segment', async () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    expect(screen.getByText('820')).toBeInTheDocument();
+    expect(await screen.findByText('820')).toBeInTheDocument();
     expect(screen.getByText('1,240')).toBeInTheDocument();
   });
 
+
   // ── Urgency badges ──────────────────────────────────────────────────────
-  it('shows CRITICAL text for At Risk (churn 0.72)', () => {
+  it('shows CRITICAL text for At Risk (churn 0.72)', async () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    const criticals = screen.getAllByText(/Critical churn/i);
+    const criticals = await screen.findAllByText(/Critical churn/i);
     expect(criticals.length).toBeGreaterThan(0);
   });
 
-  it('shows HIGH RECOVERY ROI or LOSS PREVENTION based on profitability', () => {
+
+  it('shows HIGH RECOVERY ROI or LOSS PREVENTION based on profitability', async () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
-    const lossPrevention = screen.getAllByText(/LOSS PREVENTION|HIGH RECOVERY ROI/i);
+    const lossPrevention = await screen.findAllByText(/LOSS PREVENTION|HIGH RECOVERY ROI/i);
     expect(lossPrevention.length).toBeGreaterThan(0);
   });
 
+
   // ── Action content ──────────────────────────────────────────────────────
-  it('shows action text based on churn risk', () => {
+  it('shows action text based on churn risk', async () => {
     render(<InterventionEngine segments={MOCK_SEGMENTS} segChurn={MOCK_SEG_CHURN} />);
     // Problem text based on churn
-    expect(screen.getByText(/Critical churn at 72%|Elevated risk at/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Critical churn at 72%|Elevated risk at/i)).toBeInTheDocument();
   });
+
 
   // ── Edge cases ──────────────────────────────────────────────────────────
-  it('renders with empty segments without crashing', () => {
+  it('renders with empty segments without crashing', async () => {
     render(<InterventionEngine segments={{}} segChurn={[]} />);
-    expect(screen.getByText(/Intervention Engine/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Intervention Engine/i)).toBeInTheDocument();
   });
 
-  it('renders unknown segment using default intervention', () => {
+
+  it('renders unknown segment using default intervention', async () => {
     render(
       <InterventionEngine
         segments={{ 'UnknownSegmentXYZ': 100 }}
         segChurn={[{ segment: 'UnknownSegmentXYZ', avg_churn: 0.5 }]}
       />
     );
-    expect(screen.getAllByText(/UnknownSegmentXYZ/i)[0]).toBeInTheDocument();
+    const elements = await screen.findAllByText(/UnknownSegmentXYZ/i);
+    expect(elements.length).toBeGreaterThan(0);
+
   });
+
 });

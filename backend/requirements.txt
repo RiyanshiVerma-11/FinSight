@@ -11,3 +11,4 @@ shap==0.45.1
 xgboost==2.0.3
 httpx==0.27.0
 websockets==12.0
+scipy==1.13.0

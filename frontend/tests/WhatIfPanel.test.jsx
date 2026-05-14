@@ -13,6 +13,12 @@ import axios from 'axios';
 import WhatIfPanel from '../src/components/WhatIfPanel.jsx';
 
 vi.mock('axios');
+vi.mock('canvas-confetti', () => ({
+  __esModule: true,
+  default: vi.fn(),
+}));
+
+
 
 const MOCK_SEGMENTS = {
   'At Risk': 820,
