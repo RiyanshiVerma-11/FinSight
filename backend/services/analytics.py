@@ -763,42 +763,119 @@ class AnalyticsEngine:
 
         rfm_df['churn_probability'] = probs
 
-        # ── PRODUCTION-GRADE DRIFT DETECTION (Past vs Present) ──
+        # ── PRODUCTION-GRADE DRIFT DETECTION (Training vs Test Split) ──
+        # Compare the training set vs the held-out test set to detect temporal drift.
+        # This is the correct approach because both sets come from different time periods
+        # (temporal split), so significant differences indicate real behavioral change.
+        # NOTE: Comparing train vs full-dataset always triggers false drift because a
+        # subset mathematically differs from its superset.
         try:
             drift_features = {}
             p_values = []
             
-            # Identify a 'recent' slice from the current features (last 20% of users)
-            # This represents the data the model is currently scoring.
-            inference_data = current_features.tail(max(100, int(len(current_features) * 0.2)))
+            # Bonferroni correction: adjust significance threshold for multiple comparisons
+            n_features = len(feature_columns)
+            bonferroni_alpha = 0.05 / max(n_features, 1)
             
             for fname in feature_columns:
-                if fname in X_train_full.columns and fname in inference_data.columns:
-                    hist_col = X_train_full[fname].values
-                    recent_col = inference_data[fname].values
+                if fname in X_train.columns and fname in X_test.columns:
+                    hist_col = X_train[fname].dropna().values
+                    recent_col = X_test[fname].dropna().values
+                    
+                    if len(hist_col) < 5 or len(recent_col) < 5:
+                        continue
                     
                     # KS Test: Null hypothesis is that the two samples come from the same distribution
                     ks_stat, p_val = ks_2samp(hist_col, recent_col)
                     
                     drift_features[fname.replace('_', ' ').title()] = {
                         'ks_statistic': round(float(ks_stat), 4),
-                        'p_value': round(float(p_val), 4),
-                        'drifted': bool(p_val < 0.05)
+                        'p_value': round(float(p_val), 6),
+                        'drifted': bool(p_val < bonferroni_alpha)
                     }
                     p_values.append(p_val)
             
-            # Use the most significant drift (min p-value) as the overall status
-            avg_p = float(np.min(p_values)) if p_values else 1.0
+            # Use MEDIAN p-value for overall status to avoid false positives
+            # from multiple testing (min p-value almost always triggers with 30+ features)
+            median_p = float(np.median(p_values)) if p_values else 1.0
+            
+            # Count how many features actually drifted (after Bonferroni correction)
+            drifted_count = sum(1 for f in drift_features.values() if f['drifted'])
+            drifted_pct = round(drifted_count / max(len(drift_features), 1) * 100, 1)
+            
+            # Status based on proportion of drifted features AND median p-value
+            if drifted_pct >= 50 and median_p < 0.01:
+                drift_status = 'HIGH DRIFT'
+            elif drifted_pct >= 25 or median_p < 0.05:
+                drift_status = 'LOW DRIFT'
+            else:
+                drift_status = 'STABLE'
+            
+            # Identify top drifted features for UI explanation
+            sorted_drift = sorted(
+                [(name, info) for name, info in drift_features.items() if info['drifted']],
+                key=lambda x: x[1]['ks_statistic'],
+                reverse=True
+            )
+            top_drifted = [
+                {'feature': name, 'ks_statistic': info['ks_statistic'], 'p_value': info['p_value']}
+                for name, info in sorted_drift[:5]
+            ]
+            
+            # Generate severity explanation and recommended actions
+            if drift_status == 'HIGH DRIFT':
+                severity_reason = (
+                    f"{drifted_count} of {len(drift_features)} features ({drifted_pct}%) show statistically "
+                    f"significant distribution shifts. User behavior has materially changed since the model was trained."
+                )
+                recommended_actions = [
+                    "Retrain the model with recent data to capture new behavioral patterns.",
+                    "Investigate whether an external event (new competitor, policy change, seasonality) caused the shift.",
+                    "Review the top drifted features below — they indicate which behaviors changed the most.",
+                    "Consider increasing model retraining frequency (e.g., weekly instead of monthly)."
+                ]
+            elif drift_status == 'LOW DRIFT':
+                severity_reason = (
+                    f"{drifted_count} of {len(drift_features)} features ({drifted_pct}%) show minor distribution shifts. "
+                    f"The model is still reliable but should be monitored closely."
+                )
+                recommended_actions = [
+                    "Schedule a model retraining within the next 2-4 weeks.",
+                    "Monitor whether the drifted features stabilize or continue diverging.",
+                    "No immediate action needed — predictions remain trustworthy."
+                ]
+            else:
+                severity_reason = (
+                    f"Only {drifted_count} of {len(drift_features)} features ({drifted_pct}%) show any shift. "
+                    f"User behavior remains consistent with training data."
+                )
+                recommended_actions = [
+                    "No action needed. The model is well-calibrated for current data.",
+                    "Continue routine monitoring on the next data refresh."
+                ]
             
             metrics['drift'] = {
                 'features': drift_features,
-                'avg_p_value': round(avg_p, 4),
-                'status': 'HIGH DRIFT' if avg_p < 0.01 else 'LOW DRIFT' if avg_p < 0.05 else 'STABLE'
+                'avg_p_value': round(median_p, 6),
+                'status': drift_status,
+                'drifted_count': drifted_count,
+                'total_features': len(drift_features),
+                'drifted_pct': drifted_pct,
+                'top_drifted': top_drifted,
+                'severity_reason': severity_reason,
+                'recommended_actions': recommended_actions,
+                'correction_method': 'Bonferroni-corrected KS Test'
             }
-            logger.info(f"📊 Drift Check: Status={metrics['drift']['status']} (p={avg_p:.4f})")
+            logger.info(f"📊 Drift Check: Status={drift_status} | {drifted_count}/{len(drift_features)} drifted ({drifted_pct}%) | median_p={median_p:.6f}")
         except Exception as e:
             logger.error(f"Drift computation error: {e}")
-            metrics['drift'] = {'avg_p_value': 1.0, 'status': 'STABLE (fallback)', 'features': {}}
+            metrics['drift'] = {
+                'avg_p_value': 1.0, 'status': 'STABLE (fallback)', 'features': {},
+                'drifted_count': 0, 'total_features': 0, 'drifted_pct': 0,
+                'top_drifted': [], 'severity_reason': 'Drift analysis unavailable.',
+                'recommended_actions': ['Retry analysis with fresh data.'],
+                'correction_method': 'N/A'
+            }
         
         # Preserve all features in rfm_df for per-user SHAP and what-if analysis
         for col in feature_columns:

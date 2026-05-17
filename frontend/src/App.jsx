@@ -853,107 +853,203 @@ function App() {
                 </>
               )}
 
-              <Section span={6} delay={0.34}>
+              <Section span={12} delay={0.34}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
                   <ShieldCheck size={20} style={{ color: '#10b981' }} />
-                  <h2 style={{ margin: 0 }}>Model Health & Data Drift</h2>
+                  <h2 style={{ margin: 0 }}>Model Health & Data Drift Monitor</h2>
                   <span className="version-badge" style={{ background: '#10b981' }}>LIVE MONITOR</span>
                 </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
                   <strong>How to read this:</strong> The ROC-AUC score measures the AI's accuracy in predicting churn (closer to 100% is better). Data drift alerts you if user behavior has changed so much that the AI might need retraining.
                 </p>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', background: 'var(--bg-input)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
-                    <div style={{ width: 70, height: 70 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie data={[{ value: s?.metrics?.roc_auc || 0 }, { value: 1 - (s?.metrics?.roc_auc || 0) }]}
-                            cx="50%" cy="50%" innerRadius={24} outerRadius={34} startAngle={90} endAngle={-270}
-                            dataKey="value" stroke="none">
-                            <Cell fill="#10b981" />
-                            <Cell fill="rgba(0,0,0,0.05)" />
-                          </Pie>
-                        </PieChart>
-                      </ResponsiveContainer>
+                {/* Main horizontal layout grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                  {/* Column 1: Performance & Accuracy */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(0,0,0,0.01)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '0.25rem' }}>
+                      Performance & Accuracy
                     </div>
-                    <div>
-                      <div style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1 }}>
-                        {formatMetricPct(s?.metrics?.roc_auc)}
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', background: 'var(--bg-input)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+                      <div style={{ width: 60, height: 60 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={[{ value: s?.metrics?.roc_auc || 0 }, { value: 1 - (s?.metrics?.roc_auc || 0) }]}
+                              cx="50%" cy="50%" innerRadius={20} outerRadius={28} startAngle={90} endAngle={-270}
+                              dataKey="value" stroke="none">
+                              <Cell fill="#10b981" />
+                              <Cell fill="rgba(0,0,0,0.05)" />
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.05em', marginTop: '0.25rem' }}>ROC-AUC SCORE</div>
+                      <div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1 }}>
+                          {formatMetricPct(s?.metrics?.roc_auc)}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.05em', marginTop: '0.25rem' }}>ROC-AUC SCORE</div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                    <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.35rem', letterSpacing: '0.05em' }}>DATA DRIFT STATUS</div>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: s?.metrics?.drift?.status === 'STABLE' ? '#10b981' : s?.metrics?.drift?.status === 'LOW DRIFT' ? '#f59e0b' : '#f43f5e' }}>
-                        {s?.metrics?.drift?.status || 'N/A'}
-                      </div>
-                      <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>P-VALUE: {(s?.metrics?.drift?.avg_p_value ?? 0).toFixed(4)}</div>
-                    </div>
-                    <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+                    <div style={{ background: 'var(--bg-input)', padding: '0.85rem 1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
                       <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.35rem', letterSpacing: '0.05em' }}>CROSS-VALIDATION</div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#6366f1' }}>
                         {s?.metrics?.cv_auc_mean ? `${(s.metrics.cv_auc_mean * 100).toFixed(1)}%` : 'N/A'}
                       </div>
                       <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>F1-SCORE: {s?.metrics?.f1 ? `${(s.metrics.f1 * 100).toFixed(1)}%` : 'N/A'}</div>
                     </div>
-                  </div>
 
-                  {/* ── Confusion Matrix Mini-Grid ── */}
-                  <div style={{ marginTop: '1.25rem' }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.75rem', letterSpacing: '0.05em' }}>PREDICTION PERFORMANCE (CONFUSION MATRIX)</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem', textAlign: 'center' }}>
-                      {(() => {
-                        const cm = s?.metrics?.confusion_matrix;
-                        return [
-                          { label: 'Correct Churn Detection', val: cm ? `${cm.tp_rate}%` : '—', sub: 'True Positive (TP)', detail: `Recall: ${cm?.recall || 0}%`, color: '#10b981' },
-                          { label: 'False Alarms', val: cm ? `${cm.fp_rate}%` : '—', sub: 'False Positive (FP)', detail: `FPR: ${cm?.fp_rate || 0}%`, color: '#f59e0b' },
-                          { label: 'Missed Churners', val: cm ? `${cm.fn_rate}%` : '—', sub: 'False Negative (FN)', detail: `FNR: ${cm?.fn_rate || 0}%`, color: '#f43f5e' },
-                          { label: 'Correct Retentions', val: cm ? `${cm.tn_rate}%` : '—', sub: 'True Negative (TN)', detail: `Spec: ${cm?.specificity || 0}%`, color: '#6366f1' }
-                        ];
-                      })().map((m, i) => (
-                        <div key={i} style={{ background: 'var(--bg-card)', padding: '0.6rem', borderRadius: '0.6rem', border: '1px dashed var(--border)' }}>
-                          <div style={{ fontSize: '0.9rem', fontWeight: 900, color: m.color, marginBottom: '0.2rem' }}>{m.val}</div>
-                          <div style={{ fontSize: '0.55rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.2, marginBottom: '0.2rem' }}>{m.label}</div>
-                          <div style={{ fontSize: '0.45rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.sub}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: '1.25rem', padding: '1.15rem', background: 'rgba(99,102,241,0.06)', borderRadius: '1.25rem', border: '1px solid rgba(99,102,241,0.12)' }}>
-                    <h4 style={{ margin: '0 0 0.65rem 0', fontSize: '0.82rem', fontWeight: 900, color: '#6366f1', display: 'flex', alignItems: 'center', gap: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      <Lightbulb size={15} /> Intelligence Guide: Model Health
-                    </h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      <div style={{ display: 'flex', gap: '0.75rem' }}>
-                        <div style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.75rem', minWidth: '70px' }}>ROC-AUC:</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                          The AI's "Grade". <strong>100%</strong> means perfect predictions. <strong>80-90%</strong> is world-class for financial churn models. It measures how well the AI distinguishes between high and low risk users.
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.75rem' }}>
-                        <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: '0.75rem', minWidth: '70px' }}>DATA DRIFT:</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                          The "Stability" check. If user behavior changes (e.g., a new competitor launches), the AI's old training may become stale. <strong>Stable</strong> means the model is still highly reliable.
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.75rem' }}>
-                        <div style={{ fontWeight: 800, color: '#10b981', fontSize: '0.75rem', minWidth: '70px' }}>CONFUSION:</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                          Shows the <strong>True Positives</strong> (correctly identified churners) vs. <strong>False Positives</strong> (users who were fine but AI flagged them). Balancing these helps optimize marketing spend.
-                        </div>
+                    {/* Mini Confusion Matrix */}
+                    <div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.5rem', letterSpacing: '0.05em' }}>CONFUSION MATRIX</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.4rem', textAlign: 'center' }}>
+                        {(() => {
+                          const cm = s?.metrics?.confusion_matrix;
+                          return [
+                            { label: 'Correct Churn', val: cm ? `${cm.tp_rate}%` : '—', sub: 'True Positive', color: '#10b981' },
+                            { label: 'False Alarms', val: cm ? `${cm.fp_rate}%` : '—', sub: 'False Positive', color: '#f59e0b' },
+                            { label: 'Missed Churn', val: cm ? `${cm.fn_rate}%` : '—', sub: 'False Negative', color: '#f43f5e' },
+                            { label: 'Correct Retain', val: cm ? `${cm.tn_rate}%` : '—', sub: 'True Negative', color: '#6366f1' }
+                          ];
+                        })().map((m, i) => (
+                          <div key={i} style={{ background: 'var(--bg-input)', padding: '0.5rem 0.3rem', borderRadius: '0.6rem', border: '1px dashed var(--border)' }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 900, color: m.color, marginBottom: '0.1rem' }}>{m.val}</div>
+                            <div style={{ fontSize: '0.52rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>{m.label}</div>
+                            <div style={{ fontSize: '0.42rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.sub}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '1.25rem' }}>
-                    <div style={{ padding: '0.85rem', background: 'rgba(16,185,129,0.08)', borderRadius: '0.75rem', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.8rem', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <CheckCircle size={16} />
-                      <span>Model: <span style={{ fontWeight: 800 }}>{s?.model_info?.name || 'Random Forest'}</span>. {s?.model_info?.features_used?.length || 0} features · {s?.metrics?.train_size || 0} train samples.</span>
+                  {/* Column 2: Data Drift Status & Diagnosis */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(0,0,0,0.01)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '0.25rem' }}>
+                      Drift Diagnostics
+                    </div>
+
+                    <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.35rem', letterSpacing: '0.05em' }}>DATA DRIFT STATUS</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: s?.metrics?.drift?.status === 'STABLE' ? '#10b981' : s?.metrics?.drift?.status === 'LOW DRIFT' ? '#f59e0b' : '#f43f5e' }}>
+                        {s?.metrics?.drift?.status || 'N/A'}
+                      </div>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                        {s?.metrics?.drift?.drifted_count != null
+                          ? `${s.metrics.drift.drifted_count}/${s.metrics.drift.total_features} features shifted (${s.metrics.drift.drifted_pct}%)`
+                          : `P-VALUE: ${(s?.metrics?.drift?.avg_p_value ?? 0).toFixed(4)}`
+                        }
+                      </div>
+                    </div>
+
+                    {s?.metrics?.drift?.severity_reason && (
+                      <div style={{
+                        padding: '1rem',
+                        background: s?.metrics?.drift?.status === 'STABLE'
+                          ? 'rgba(16,185,129,0.05)'
+                          : s?.metrics?.drift?.status === 'LOW DRIFT'
+                            ? 'rgba(245,158,11,0.05)'
+                            : 'rgba(244,63,94,0.05)',
+                        borderRadius: '1rem',
+                        border: `1px solid ${s?.metrics?.drift?.status === 'STABLE'
+                          ? 'rgba(16,185,129,0.12)'
+                          : s?.metrics?.drift?.status === 'LOW DRIFT'
+                            ? 'rgba(245,158,11,0.12)'
+                            : 'rgba(244,63,94,0.12)'}`
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <AlertTriangle size={14} style={{ color: s?.metrics?.drift?.status === 'STABLE' ? '#10b981' : '#f59e0b' }} />
+                          <span style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em',
+                            color: s?.metrics?.drift?.status === 'STABLE' ? '#059669' : s?.metrics?.drift?.status === 'LOW DRIFT' ? '#d97706' : '#e11d48'
+                          }}>
+                            Why this status?
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.4, fontWeight: 500 }}>
+                          {s.metrics.drift.severity_reason}
+                        </p>
+
+                        {/* Top Drifted Features */}
+                        {(s?.metrics?.drift?.top_drifted || []).length > 0 ? (
+                          <div style={{ marginTop: '0.6rem' }}>
+                            <div style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>
+                              Top Shifted Features
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              {s.metrics.drift.top_drifted.map((f, i) => (
+                                <div key={i} style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '0.3rem 0.5rem',
+                                  background: 'rgba(0,0,0,0.02)',
+                                  borderRadius: '0.4rem',
+                                  borderLeft: '3px solid #f43f5e'
+                                }}>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-primary)' }}>{f.feature}</span>
+                                  <span style={{ fontSize: '0.6rem', color: '#f43f5e', fontWeight: 700 }}>KS: {f.ks_statistic}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '0.5rem' }}>
+                            No individual features show statistically significant drift.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Column 3: Recommended Actions & Strategy */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'rgba(0,0,0,0.01)', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '0.25rem' }}>
+                      Actions & Strategy
+                    </div>
+
+                    {/* Recommended Actions */}
+                    <div style={{ background: 'var(--bg-input)', padding: '0.85rem 1rem', borderRadius: '1rem', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                        Recommended Actions
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {(s?.metrics?.drift?.recommended_actions || []).length > 0 ? (
+                          s.metrics.drift.recommended_actions.map((action, i) => (
+                            <div key={i} style={{
+                              display: 'flex', alignItems: 'flex-start', gap: '0.4rem',
+                              fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, lineHeight: 1.3
+                            }}>
+                              <CheckCircle size={12} style={{ color: '#10b981', marginTop: '0.1rem', flexShrink: 0 }} />
+                              <span>{action}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 500, lineHeight: 1.3 }}>
+                            <CheckCircle size={12} style={{ color: '#10b981', marginTop: '0.1rem', flexShrink: 0 }} />
+                            <span>No immediate retraining actions needed. Keep monitoring routinely.</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Mini Metric Guide */}
+                    <div style={{ padding: '0.85rem 1rem', background: 'rgba(99,102,241,0.04)', borderRadius: '1rem', border: '1px solid rgba(99,102,241,0.1)' }}>
+                      <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', fontWeight: 900, color: '#6366f1', display: 'flex', alignItems: 'center', gap: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <Lightbulb size={14} /> Metrics Guide
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.7rem', color: 'var(--text-secondary)', lineHeight: 1.3 }}>
+                        <div>
+                          <strong>ROC-AUC:</strong> Predictor grade (perfect score is 100%).
+                        </div>
+                        <div>
+                          <strong>Data Drift:</strong> Detects if incoming behavior shifts from training distributions using KS analysis.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ padding: '0.6rem 0.8rem', background: 'rgba(16,185,129,0.08)', borderRadius: '0.75rem', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.75rem', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: 'auto' }}>
+                      <CheckCircle size={14} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Model: <strong>{s?.model_info?.name || 'Random Forest'}</strong> · {s?.model_info?.features_used?.length || 0} features
+                      </span>
                     </div>
                   </div>
                 </div>
