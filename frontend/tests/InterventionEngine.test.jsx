@@ -8,7 +8,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import InterventionEngine from '../src/components/InterventionEngine.jsx';
+import InterventionEngine from '../src/components/dashboard/InterventionEngine.jsx';
 import axios from 'axios';
 
 vi.mock('axios');

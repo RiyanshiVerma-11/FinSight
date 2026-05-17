@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Info } from 'lucide-react';
 
-export default function FormulaTooltip({ formula, title = "Calculation Logic", children, color = "#6366f1" }) {
+export default function FormulaTooltip({ formula, title = "Calculation Logic", children, color = "#6366f1", align = "center" }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -22,8 +22,9 @@ export default function FormulaTooltip({ formula, title = "Calculation Logic", c
             style={{
               position: 'absolute',
               bottom: '100%',
-              left: '50%',
-              transform: 'translateX(-50%)',
+              left: align === 'left' ? '0%' : align === 'right' ? 'auto' : '50%',
+              right: align === 'right' ? '0%' : 'auto',
+              transform: align === 'left' ? 'none' : align === 'right' ? 'none' : 'translateX(-50%)',
               marginBottom: '12px',
               zIndex: 100,
               width: '240px',
@@ -49,8 +50,9 @@ export default function FormulaTooltip({ formula, title = "Calculation Logic", c
             <div style={{
               position: 'absolute',
               top: '100%',
-              left: '50%',
-              transform: 'translateX(-50%)',
+              left: align === 'left' ? '20px' : align === 'right' ? 'auto' : '50%',
+              right: align === 'right' ? '20px' : 'auto',
+              transform: align === 'left' ? 'none' : align === 'right' ? 'none' : 'translateX(-50%)',
               width: 0,
               height: 0,
               borderLeft: '8px solid transparent',

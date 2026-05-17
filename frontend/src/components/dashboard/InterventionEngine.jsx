@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { Target, Zap, RefreshCw, TrendingUp, ShieldAlert, CheckCircle2, Info } from 'lucide-react';
-import FormulaTooltip from './FormulaTooltip';
+import FormulaTooltip from '../ui/FormulaTooltip';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 

@@ -9,7 +9,10 @@ import {
   Target, Zap, CheckCircle, X, LayoutDashboard, Download, 
   FileText, Briefcase, Activity, Award, AlertTriangle, Lightbulb, Brain, Info, MessageSquare, ShieldCheck
 } from 'lucide-react';
-import FormulaTooltip from './FormulaTooltip';
+import FormulaTooltip from '../ui/FormulaTooltip';
+import MetricCards from './MetricCards';
+import ExecutiveHeader from './ExecutiveHeader';
+import ActionPlanSection from './ActionPlanSection';
 
 const COLORS = ['#6366f1', '#ec4899', '#8b5cf6', '#06b6d4', '#f59e0b', '#10b981'];
 const SEGMENT_COLORS = {
@@ -156,6 +159,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
   const domain = data?.summary?.domain || 'generic';
   const [showOnboardingList, setShowOnboardingList] = useState(false);
   const [selectedHypothesis, setSelectedHypothesis] = useState(null);
+  const [activePlaybookTab, setActivePlaybookTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -231,72 +235,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
         {/* Glow Effect */}
         <div style={{ position: 'absolute', top: 0, right: 0, width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(99,102,241,0.03) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-        {/* Header */}
-        <div className="exec-header" style={{ 
-          padding: '2rem 2.5rem', 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)' 
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            <div style={{ 
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
-              width: 54, height: 54, borderRadius: '16px', 
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 10px 25px rgba(99, 102, 241, 0.2)',
-              color: '#fff'
-            }}>
-              <LayoutDashboard size={28} />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.04em', margin: 0, color: '#ffffff' }}>
-                Executive Intelligence Dashboard
-              </h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600, marginTop: '0.2rem' }}>
-                <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
-                  Live System Active
-                </span>
-                <span style={{ color: 'rgba(255,255,255,0.4)' }}>•</span>
-                <span style={{ color: '#ffffff', opacity: 0.9 }}>{`${totalUsers.toLocaleString()} High-Value Profiles Analyzed`}</span>
-                {s?.metrics?.roc_auc ? (
-                  <span style={{ 
-                    fontSize: '0.65rem', fontWeight: 900, 
-                    color: s.metrics.roc_auc > 0.75 ? '#10b981' : s.metrics.roc_auc > 0.60 ? '#f59e0b' : '#f43f5e', 
-                    background: s.metrics.roc_auc > 0.75 ? 'rgba(16,185,129,0.1)' : s.metrics.roc_auc > 0.60 ? 'rgba(245,158,11,0.1)' : 'rgba(244,63,94,0.1)', 
-                    padding: '0.2rem 0.6rem', 
-                    borderRadius: '20px', 
-                    border: `1px solid ${s.metrics.roc_auc > 0.75 ? 'rgba(16,185,129,0.2)' : s.metrics.roc_auc > 0.60 ? 'rgba(245,158,11,0.2)' : 'rgba(244,63,94,0.2)'}`,
-                    display: 'flex', alignItems: 'center', gap: '0.3rem'
-                  }}>
-                    {s.metrics.roc_auc > 0.75 ? <ShieldCheck size={10} /> : <AlertTriangle size={10} />}
-                    {`${s.metrics.roc_auc > 0.75 ? 'High Confidence' : s.metrics.roc_auc > 0.60 ? 'Moderate Confidence' : 'Low Confidence'} (AUC: ${(s.metrics.roc_auc * 100).toFixed(1)}%)`}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <button 
-              onClick={onExportAll}
-              className="btn-export-premium"
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.75rem',
-                background: '#f8fafc', color: '#0f172a', 
-                border: '1px solid #e2e8f0',
-                padding: '0.85rem 1.75rem', borderRadius: '14px', fontWeight: 800,
-                cursor: 'pointer', fontSize: '0.9rem', transition: 'all 0.2s',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.02)'
-              }}
-            >
-              <FileText size={18} color="#6366f1" />
-              Generate Board Briefing
-            </button>
-          </div>
-        </div>
+        <ExecutiveHeader totalUsers={totalUsers} s={s} onExportAll={onExportAll} />
 
         {/* ── Dynamic Strategic Narrative ── */}
         <div style={{ padding: '1.5rem 2.5rem 0' }}>
@@ -358,81 +297,25 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
 
 
         {/* KPI Row */}
-        <div className="exec-kpi-row" style={{ padding: '2rem 2.5rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
-          {[
-            { 
-              id: 'market',
-              icon: Users, label: 'Market Footprint', value: totalUsers.toLocaleString(), 
-              sub: 'Total Profiles', color: '#6366f1', bg: 'rgba(99,102,241,0.08)',
-              desc: 'Overall customer base being monitored.',
-              logic: `Computed from: Count of unique User IDs in the active dataset (${totalUsers.toLocaleString()} profiles).`
-            },
-            { 
-              id: 'risk',
-              icon: AlertTriangle, label: 'Baseline Churn Risk', value: `${churnPct}%`, 
-              sub: 'Unweighted Mean', color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',
-              desc: `Average churn probability across all ${totalUsers} users. Revenue-weighted: ${revenueWeightedPct}%.`,
-              logic: `[WHY THIS MATTERS]: This is the primary indicator of your overall churn rate. It represents the probability that any given customer will leave in the next 30-180 days. [CALCULATION]: Mean(All User Churn Probabilities).`
-            },
-            { 
-              id: 'exposure',
-              icon: DollarSign, label: 'Revenue Exposure', value: formatCurrency(revAtRisk), 
-              sub: 'Capital at Stake', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',
-              desc: 'Total revenue potentially lost if no action taken.',
-              logic: `[WHY THIS MATTERS]: This turns "risk percentages" into real money. It helps you prioritize high-value users who are at risk. [CALCULATION]: Σ(Spending Velocity × 90 Days × Churn Prob).`
-            },
-            { 
-              id: 'capture',
-              icon: Target, label: 'Recovery Capture', value: formatCurrency(potentialSaved), 
-              sub: 'Actionable ROI', color: '#10b981', bg: 'rgba(16,185,129,0.08)', 
-              action: 'simulation',
-              desc: 'Revenue we can save via AI-driven interventions.',
-              logic: `[WHY THIS MATTERS]: This is your goal. It represents how much money you can "claw back" by running the recommended campaigns. [CALCULATION]: (Revenue Exposure) × (AI Model Accuracy × 0.5).`
-            },
-          ].map(({ id, icon: Icon, label, value, sub, color, bg, action, desc, logic }, i) => (
-            <FormulaTooltip key={i} formula={logic} color={color}>
-              <motion.div 
-                whileHover={{ y: -5 }}
-                style={{ 
-                  background: 'var(--bg-input)', padding: '1.5rem', borderRadius: '24px', 
-                  border: '1px solid var(--border)', 
-                  transition: 'all 0.3s', 
-                  position: 'relative', overflow: 'hidden',
-                  cursor: 'help',
-                  height: '100%'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <div style={{ color, background: bg, width: 44, height: 44, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon size={22} />
-                  </div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{sub}</div>
-                </div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 700, marginBottom: '0.2rem' }}>{label}</div>
-                <div style={{ fontSize: '1.85rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>{value}</div>
-                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.4 }}>{desc}</p>
-                {action && onNavigate && (
-                  <div 
-                    onClick={(e) => { e.stopPropagation(); onNavigate(action); }}
-                    style={{ 
-                      marginTop: '1.25rem', padding: '0.6rem', background: bg, color: color, 
-                      borderRadius: '10px', fontSize: '0.75rem', fontWeight: 800, 
-                      display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem',
-                      cursor: 'pointer', border: `1px solid ${color}30`,
-                      transition: 'all 0.2s',
-                      boxShadow: `0 4px 12px ${color}15`
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.background = `${color}25`; }}
-                    onMouseOut={(e) => { e.currentTarget.style.background = bg; }}
-                  >
-                    <Zap size={14} /> Open Decision Tuner &rarr;
-                  </div>
-                )}
-              </motion.div>
-            </FormulaTooltip>
-          ))}
-        </div>
+        <MetricCards 
+          totalUsers={totalUsers}
+          churnPct={churnPct}
+          revenueWeightedPct={revenueWeightedPct}
+          revAtRisk={revAtRisk}
+          potentialSaved={potentialSaved}
+          onNavigate={onNavigate}
+          domain={domain}
+        />
 
+        <ActionPlanSection 
+          prioritySegmentName={prioritySegmentName} 
+          priorityRiskCount={priorityRiskCount} 
+          s={s} 
+          potentialSaved={potentialSaved} 
+          confidence={confidence} 
+          driftStatus={driftStatus} 
+          onNavigate={onNavigate} 
+        />
 
         <div className="exec-grid-main" style={{ padding: '0 2.5rem 2.5rem', display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '2rem' }}>
           {/* Left Column: Intelligence Visuals */}
@@ -462,21 +345,21 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                           <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} dy={10} />
                           <YAxis hide domain={[0, 'auto']} />
                           <Tooltip content={<CustomTooltip />} />
-                          <Area type="monotone" dataKey="baseline" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorRisk)" name="No Action Risk" />
-                          <Area type="monotone" dataKey="risk" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSaved)" name="AI Optimized Risk" />
+                          <Area type="monotone" stackId="1" dataKey="risk" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorRisk)" name="Remaining Risk" />
+                          <Area type="monotone" stackId="1" dataKey="saved" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSaved)" name="Risk Prevented (Saved)" />
                        </AreaChart>
                    </ResponsiveContainer>
                 </div>
                 <div style={{ display: 'flex', gap: '2rem', marginTop: '1.5rem', justifyContent: 'center' }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#f43f5e' }}>
-                      <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#f43f5e', opacity: 0.2, border: '2px solid #f43f5e' }} /> Baseline Risk
+                      <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#f43f5e', opacity: 0.2, border: '2px solid #f43f5e' }} /> Remaining Risk
                    </div>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#10b981' }}>
-                      <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#10b981', opacity: 0.2, border: '2px solid #10b981' }} /> AI Optimized
+                      <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#10b981', opacity: 0.2, border: '2px solid #10b981' }} /> Risk Prevented (Saved)
                    </div>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '1.5rem', padding: '0.85rem', background: 'rgba(99,102,241,0.05)', borderRadius: '8px', borderLeft: '3px solid #6366f1' }}>
-                   <strong>How to read this:</strong> The red area shows projected churn risk if no action is taken. The green area shows the reduced risk after applying AI-recommended interventions. The gap between them represents the revenue you can save!
+                   <strong>How to read this:</strong> The red area represents the remaining baseline churn risk. The green area at the top represents the portion of risk that is removed (saved revenue) when adopting AI-recommended interventions.
                 </div>
              </div>
 
@@ -521,10 +404,10 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 <div style={{ background: 'var(--bg-input)', padding: '1.5rem', borderRadius: '24px', border: '1px solid var(--border)' }}>
                    <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <TrendingDown size={16} color="#f43f5e" />
-                      Avg. Churn Probability (Per Segment)
+                      Revenue-Weighted Risk (Per Segment)
                    </div>
                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', padding: '0.75rem', background: 'rgba(244,63,94,0.05)', borderRadius: '8px', borderLeft: '3px solid #f43f5e' }}>
-                      <strong>How to read this:</strong> These progress bars show the average risk level for each segment. Longer bars indicate a higher chance that users in this group will leave. Focus your retention efforts on the segments with the longest bars!
+                      <strong>How to read this:</strong> These progress bars show the revenue-weighted risk level for each segment. Longer bars indicate a higher expected financial loss from users in this group. Focus your retention efforts on the segments with the longest bars!
                    </div>
                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                        {segChurn.slice(0, 5).map((seg, i) => (
@@ -641,71 +524,6 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 </div>
              )}
 
-             {/* ── COMMAND CENTER (Repositioned precisely within the left column) ── */}
-             <div style={{ 
-                background: 'var(--bg-card)', 
-                borderRadius: '24px', 
-                padding: '2rem',
-                border: '1px solid var(--border)',
-                position: 'relative',
-                overflow: 'hidden',
-                marginTop: '2rem',
-                boxShadow: '0 10px 30px rgba(0,0,0,0.02)'
-             }}>
-                <Zap size={100} style={{ position: 'absolute', right: '-20px', bottom: '-20px', color: 'rgba(99,102,241,0.05)', transform: 'rotate(-15deg)' }} />
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                   <div style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', padding: '0.5rem', borderRadius: '10px' }}>
-                      <Zap size={20} fill="#f59e0b" />
-                   </div>
-                   <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, letterSpacing: '-0.02em', color: 'var(--text-primary)', textTransform: 'uppercase' }}>What should I do now?</h2>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '2rem', position: 'relative', zIndex: 1 }}>
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>1. Target Segment First</span>
-                      <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#f59e0b' }}>{prioritySegmentName}</span>
-                   </div>
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>2. Primary "Why"</span>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4 }}>
-                         {s?.top_drivers?.[0]?.feature || 'Behavioral'} anomaly detected. {s?.top_drivers?.[0]?.direction === 'increases_churn' ? 'Increasing' : 'Declining'} patterns indicate imminent churn.
-                      </span>
-                   </div>
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>3. Est. Revenue Protected</span>
-                      <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#10b981' }}>{formatCurrency(potentialSaved)}</span>
-                   </div>
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>4. Recommended Campaign</span>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4 }}>{s?.hypotheses?.[0]?.test || 'Targeted re-engagement nudges.'}</span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                       <span style={{ fontSize: '0.65rem', fontWeight: 900, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>5. Confidence & Caveat</span>
-                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                          <span style={{ fontSize: '0.95rem', fontWeight: 900, color: '#6366f1' }}>{confidence}% Model Health</span>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                             {driftStatus === 'STABLE' ? 'Baseline remains stable.' : 'Significant market drift detected.'}
-                          </span>
-                       </div>
-                    </div>
-                 </div>
-                 
-                 {onNavigate && (
-                   <button 
-                     onClick={() => onNavigate('explainability')}
-                     style={{ 
-                       marginTop: '2rem', width: '100%', padding: '0.75rem', borderRadius: '12px',
-                       background: 'var(--bg-input)', border: '1px solid var(--border)',
-                       color: 'var(--text-secondary)', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer',
-                       display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem',
-                       transition: 'all 0.2s'
-                     }}
-                   >
-                     <Brain size={14} /> Audit Model Evidence &rarr;
-                   </button>
-                 )}
-              </div>
           </div>
 
           {/* Right Column: Strategic Insights & Decision Intelligence */}
@@ -743,53 +561,88 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                    <span style={{ marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 900, background: '#10b981', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '10px' }}>AI-POWERED</span>
                 </div>
                 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                   {(s?.hypotheses || []).slice(0, 3).map((h, i) => (
-                      <motion.div 
-                        key={i} 
-                        whileHover={{ x: 5, scale: 1.01 }}
-                        onClick={() => setSelectedHypothesis(h)}
-                        style={{ 
-                         padding: '1.25rem', 
-                         background: 'rgba(255,255,255,0.8)', 
-                         borderRadius: '18px', 
-                         border: '1px solid rgba(0,0,0,0.05)',
-                         borderLeft: `6px solid ${PERSONA_DEFINITIONS[h.driver]?.color || '#6366f1'}`,
-                         boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
-                         cursor: 'pointer'
-                       }}>
-                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-                            <span style={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#6366f1', letterSpacing: '0.05em' }}>{h.driver || 'Behavioral'}</span>
-                            <span style={{ fontSize: '0.65rem', fontWeight: 900, background: h.impact === 'Critical' ? 'rgba(244,63,94,0.1)' : 'rgba(245,158,11,0.1)', color: h.impact === 'Critical' ? '#f43f5e' : '#f59e0b', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
-                               {h.impact} Impact
-                            </span>
-                         </div>
-                         <div style={{ fontWeight: 900, fontSize: '1rem', marginBottom: '0.5rem', color: '#1e293b', lineHeight: 1.3 }}>{h.title}</div>
-                         <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.6, fontWeight: 500 }}>{h.hypothesis}</div>
-                         
-                         <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: '12px', border: '1px dashed rgba(99,102,241,0.2)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 800, color: '#6366f1' }}>
-                               <Zap size={14} /> 
-                               <span><strong>Execution Plan:</strong> {h.test || h.action}</span>
-                            </div>
-                            {h.expected_lift_pct && (
-                              <FormulaTooltip formula="Projected Lift = (Behavioral Gap x Model Confidence). This represents the percentage of 'At-Risk' revenue we expect to save by implementing this specific strategy." color="#10b981"><div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'help' }}>
-                                 <TrendingUp size={12} /> Projected Recovery: +{h.expected_lift_pct}% Revenue Retention
-                              </div>
-                            </FormulaTooltip>
-                          )}
-                         </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                 {/* Hypotheses Switcher Tabs */}
+                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+                    {(s?.hypotheses || []).slice(0, 3).map((h, idx) => (
+                       <button
+                          key={idx}
+                          onClick={() => setActivePlaybookTab(idx)}
+                          style={{
+                             padding: '0.5rem 0.85rem',
+                             borderRadius: '12px',
+                             background: activePlaybookTab === idx 
+                                ? (PERSONA_DEFINITIONS[h.driver]?.color || '#6366f1') 
+                                : 'rgba(0,0,0,0.03)',
+                             color: activePlaybookTab === idx ? '#fff' : 'var(--text-secondary)',
+                             border: 'none',
+                             fontSize: '0.72rem',
+                             fontWeight: 900,
+                             cursor: 'pointer',
+                             whiteSpace: 'nowrap',
+                             transition: 'all 0.2s',
+                             boxShadow: activePlaybookTab === idx ? '0 4px 12px rgba(0,0,0,0.1)' : 'none'
+                          }}
+                       >
+                          {h.driver || `Strategy ${idx + 1}`}
+                       </button>
+                    ))}
+                 </div>
 
-                         <div 
-                           onClick={() => alert(`[AI CAMPAIGN TEMPLATE]\n\nSubject: ${h.title}\n\nRecommended Channel: Email & Push Notification\nTarget Audience: ${h.driver} Segment\n\nTemplate:\n"Hi there, we noticed your ${h.driver} has changed. To help you get more value, we've unlocked a special ${h.test || 'offer'} just for you!"`)}
-                           style={{ 
-                             marginTop: '0.85rem', textAlign: 'right', fontSize: '0.65rem', 
-                             fontWeight: 900, color: '#6366f1', cursor: 'pointer', textDecoration: 'underline'
-                           }}>
-                           View Multi-Channel Template &rarr;
-                         </div>
-                      </motion.div>
-                   ))}
+                 {s?.hypotheses?.[activePlaybookTab] && (() => {
+                    const h = s.hypotheses[activePlaybookTab];
+                    return (
+                       <motion.div 
+                         key={activePlaybookTab}
+                         initial={{ opacity: 0, y: 10 }}
+                         animate={{ opacity: 1, y: 0 }}
+                         whileHover={{ scale: 1.01 }}
+                         onClick={() => setSelectedHypothesis(h)}
+                         style={{ 
+                          padding: '1.25rem', 
+                          background: 'rgba(255,255,255,0.8)', 
+                          borderRadius: '18px', 
+                          border: '1px solid rgba(0,0,0,0.05)',
+                          borderLeft: `6px solid ${PERSONA_DEFINITIONS[h.driver]?.color || '#6366f1'}`,
+                          boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
+                          cursor: 'pointer'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                             <span style={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#6366f1', letterSpacing: '0.05em' }}>{h.driver || 'Behavioral'}</span>
+                             <span style={{ fontSize: '0.65rem', fontWeight: 900, background: h.impact === 'Critical' ? 'rgba(244,63,94,0.1)' : 'rgba(245,158,11,0.1)', color: h.impact === 'Critical' ? '#f43f5e' : '#f59e0b', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
+                                {h.impact} Impact
+                             </span>
+                          </div>
+                          <div style={{ fontWeight: 900, fontSize: '1rem', marginBottom: '0.5rem', color: '#1e293b', lineHeight: 1.3 }}>{h.title}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.6, fontWeight: 500 }}>{h.hypothesis}</div>
+                          
+                          <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: '12px', border: '1px dashed rgba(99,102,241,0.2)' }}>
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 800, color: '#6366f1' }}>
+                                <Zap size={14} /> 
+                                <span><strong>Execution Plan:</strong> {h.test || h.action}</span>
+                             </div>
+                             {h.expected_lift_pct && (
+                               <FormulaTooltip formula="Projected Lift = (Behavioral Gap x Model Confidence). This represents the percentage of 'At-Risk' revenue we expect to save by implementing this specific strategy." color="#10b981"><div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'help' }}>
+                                  <TrendingUp size={12} /> Projected Recovery: +{h.expected_lift_pct}% Revenue Retention
+                               </div>
+                             </FormulaTooltip>
+                           )}
+                          </div>
+
+                          <div 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              alert(`[AI CAMPAIGN TEMPLATE]\n\nSubject: ${h.title}\n\nRecommended Channel: Email & Push Notification\nTarget Audience: ${h.driver} Segment\n\nTemplate:\n"Hi there, we noticed your ${h.driver} has changed. To help you get more value, we've unlocked a special ${h.test || 'offer'} just for you!"`);
+                            }}
+                            style={{ 
+                              marginTop: '0.85rem', textAlign: 'right', fontSize: '0.65rem', 
+                              fontWeight: 900, color: '#6366f1', cursor: 'pointer', textDecoration: 'underline'
+                            }}>
+                            View Multi-Channel Template &rarr;
+                          </div>
+                       </motion.div>
+                    );
+                 })()}
                 </div>
 
                 <button 

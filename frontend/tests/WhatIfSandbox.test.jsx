@@ -10,7 +10,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
-import WhatIfPanel from '../src/components/WhatIfPanel.jsx';
+import WhatIfPanel from '../src/components/dashboard/WhatIfSandbox.jsx';
 
 vi.mock('axios');
 vi.mock('canvas-confetti', () => ({

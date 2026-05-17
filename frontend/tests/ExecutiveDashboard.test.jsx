@@ -8,7 +8,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ExecutiveDashboard from '../src/components/ExecutiveDashboard.jsx';
+import ExecutiveDashboard from '../src/components/dashboard/ExecutiveDashboard.jsx';
 
 // ── Sample data fixture ───────────────────────────────────────────────────
 const MOCK_DATA = {

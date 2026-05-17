@@ -6,7 +6,7 @@ import {
   Zap, Gift, Bell, Smartphone, Tag, Trophy, FlaskConical, Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import FormulaTooltip from './FormulaTooltip';
+import FormulaTooltip from '../ui/FormulaTooltip';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -124,7 +124,7 @@ function AnimatedNumber({ value, prefix = '', suffix = '', decimals = 1 }) {
   );
 }
 
-export default function WhatIfPanel({ segments, segChurn, domain, onSimulationResult }) {
+export default function WhatIfSandbox({ segments, segChurn, domain, onSimulationResult }) {
   const campaigns = DOMAIN_CONFIG[domain]?.campaigns || DEFAULT_CAMPAIGNS;
   const features = DOMAIN_CONFIG[domain]?.features || [
     { id: 'frequency', label: 'Frequency (+engagement)' },
