@@ -64,8 +64,13 @@ An interactive sandbox where product managers can simulate behavioral changes (e
 ### 4. Explainable AI (SHAP)
 We rejected "Black Box" models. Every prediction includes a **Feature Impact Breakdown**, showing the exact behavioral drivers (e.g., "Frequency Drop" or "High Recency") causing the risk.
 
-### 5. Live Drift Monitoring
-Integrates **KS-Test (Kolmogorov-Smirnov)** to detect distribution shifts between historical training data and live transactional streams. If user behavior shifts (e.g., due to market changes), the engine flags it immediately.
+### 5. Live Drift Monitoring (Bonferroni-Corrected)
+Integrates **Kolmogorov-Smirnov (KS) Tests** to detect distribution shifts between historical training data and live transactional streams. We apply **Bonferroni correction** to eliminate false alarms when testing dozens of features simultaneously. If true user behavior shifts (e.g., due to market changes), the engine flags the exact shifted features immediately.
+
+### 6. Enterprise-Grade CI/CD Pipeline
+Built for production reliability, FinSight includes automated **Quality Gates** via GitHub Actions:
+- **Backend**: Comprehensive `pytest` suite ensuring analytical accuracy and API stability.
+- **Frontend**: Fully asynchronous `vitest` suite validating UI rendering and component logic.
 
 ---
 
@@ -101,8 +106,8 @@ GROQ_API_KEY=your_groq_api_key_here
 
 ---
 
-## The 30-Day Roadmap: What's Next?
-If we had another month, these are the **High-ROI** features we would ship first:
+## Upcoming Features & Production Roadmap
+These are the **High-ROI** features currently in the pipeline to scale FinSight for enterprise production:
 
 1. **Live Transactional Streams (Kafka/RabbitMQ)**: 
    - Moving from batch CSV uploads to a real-time WebSocket firehose.
