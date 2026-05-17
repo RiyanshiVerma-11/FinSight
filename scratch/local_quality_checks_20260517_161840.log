@@ -1,7 +1,0 @@
-Local quality checks started: 2026-05-17T16:18:40.523822
-Repo root: D:\Riyanshi\01_coding\projects\25 FinSight
-
-=== Backend tests ===
-cwd: D:\Riyanshi\01_coding\projects\25 FinSight\backend
-cmd: pytest -q
-
