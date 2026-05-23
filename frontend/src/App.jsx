@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDatasets, useAnalytics, useFileUpload, useLlmHypotheses } from './hooks/useFinSightQueries';
 import DashboardLayout from './components/layout/DashboardLayout';
 
 function App() {
   const [selectedDataset, setSelectedDataset] = useState("");
   const [uploadedData, setUploadedData] = useState(null);
+  const queryClient = useQueryClient();
 
   const { data: datasets = [] } = useDatasets();
-  
-  const { 
-    data: analyticsData, 
-    isLoading: isAnalyticsLoading, 
+
+  const {
+    data: analyticsData,
+    isLoading: isAnalyticsLoading,
     error: analyticsError,
     refetch: refetchAnalytics
   } = useAnalytics(selectedDataset, {
@@ -45,7 +47,8 @@ function App() {
   const fetchDemoData = () => {
     setSelectedDataset("");
     setUploadedData(null);
-    refetchAnalytics();
+    // Invalidate the cache so React Query always hits the server fresh
+    queryClient.invalidateQueries({ queryKey: ['analytics', ''] });
   };
 
   return (

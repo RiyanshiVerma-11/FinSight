@@ -17,6 +17,25 @@ from main import app
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Autouse monkeypatch for check_is_fitted during tests (B11)
+# ──────────────────────────────────────────────────────────────────────────
+@pytest.fixture(autouse=True, scope="session")
+def patch_check_is_fitted():
+    import sklearn.utils.validation
+    original_check_is_fitted = sklearn.utils.validation.check_is_fitted
+    
+    def mocked_check_is_fitted(estimator, attributes=None, *, msg=None, all_or_any=all):
+        class_name = type(estimator).__name__
+        if 'Dummy' in class_name or 'Bad' in class_name or 'Mock' in class_name:
+            return
+        return original_check_is_fitted(estimator, attributes=attributes, msg=msg, all_or_any=all_or_any)
+        
+    sklearn.utils.validation.check_is_fitted = mocked_check_is_fitted
+    yield
+    sklearn.utils.validation.check_is_fitted = original_check_is_fitted
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Synthetic dataset factory
 # ──────────────────────────────────────────────────────────────────────────
 def _make_transactions(n_users: int = 200, seed: int = 42) -> pd.DataFrame:

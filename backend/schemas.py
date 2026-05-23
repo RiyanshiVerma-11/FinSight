@@ -62,15 +62,24 @@ class UserShapResponse(BaseModel):
 
 
 class WhatIfResponse(BaseModel):
+    model_config = {
+        "protected_namespaces": ()
+    }
+
     segment: str
-    feature_modified: str
+    feature: str
     delta_pct: float
     original_churn: float
     simulated_churn: float
     churn_reduction_pct: float
-    users_affected: int
+    absolute_reduction: float
+    revenue_saved: float
     revenue_protected: float
+    ltv_saved: float
     recommendation: str
+    users_affected: int
+    model_evidence_pct: float
+    feature_importance: float
 
 
 class ModelVersionInfo(BaseModel):

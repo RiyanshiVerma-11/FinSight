@@ -11,7 +11,7 @@ export default function SimulationTab({ s, segChurn, setGlobalSimResult, fetchLl
     <>
       <div style={{ gridColumn: 'span 12' }}>
                 <Section span={12} delay={0} className="tour-whatif" initial={false}>
-                  <WhatIfSandbox segments={s?.segments} segChurn={segChurn} domain={s?.domain} onSimulationResult={setGlobalSimResult} />
+                  <WhatIfSandbox segments={s?.segments} segChurn={segChurn} domain={s?.domain} onSimulationResult={setGlobalSimResult} hypotheses={llmHypotheses?.hypotheses || s?.hypotheses} isSummaryData={s?.is_summary_data} />
                 </Section>
               </div>
 

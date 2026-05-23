@@ -50,17 +50,19 @@ export const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export const StatCard = ({ icon: Icon, iconClass, cardClass = '', label, value, trend, trendClass, trendIcon: TrendIcon, delay = 0, className = "", logic }) => (
-  <FormulaTooltip formula={logic} color={cardClass.includes('indigo') ? '#6366f1' : cardClass.includes('rose') ? '#f43f5e' : cardClass.includes('cyan') ? '#06b6d4' : '#f59e0b'}>
-    <motion.div className={`card stat-card ${cardClass} ${className}`}
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay, duration: 0.4 }}
-      style={{ position: 'relative', cursor: logic ? 'help' : 'default', height: '100%' }}
-    >
-      <div className={`stat-icon ${iconClass}`}><Icon size={22} /></div>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      <div className={`stat-trend ${trendClass}`}><TrendIcon size={14} />{trend}</div>
-    </motion.div>
-  </FormulaTooltip>
+  <motion.div className={`card stat-card ${cardClass} ${className}`}
+    initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay, duration: 0.4 }}
+    style={{ position: 'relative', cursor: logic ? 'help' : 'default', height: '100%' }}
+  >
+    <FormulaTooltip formula={logic} color={cardClass.includes('indigo') ? '#6366f1' : cardClass.includes('rose') ? '#f43f5e' : cardClass.includes('cyan') ? '#06b6d4' : '#f59e0b'}>
+      <div>
+        <div className={`stat-icon ${iconClass}`}><Icon size={22} /></div>
+        <div className="stat-label">{label}</div>
+        <div className="stat-value">{value}</div>
+        <div className={`stat-trend ${trendClass}`}><TrendIcon size={14} />{trend}</div>
+      </div>
+    </FormulaTooltip>
+  </motion.div>
 );
 
 export const Section = ({ children, span = 12, delay = 0, style = {}, className = "", initial = { opacity: 0 } }) => (

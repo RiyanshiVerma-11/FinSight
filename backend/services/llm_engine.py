@@ -251,8 +251,8 @@ async def generate_roi_explanation(req_data):
     if not GROQ_API_KEY or not HAS_HTTPX:
         return _fallback_roi_explanation(req_data)
 
-    prompt = f"""You are a senior FinSight data scientist explaining a churn simulation ROI in a concise, hard-hitting manner.
-Based on the following counterfactual simulation result, explain exactly WHY it is profitable or non-profitable.
+    prompt = f"""You are a business strategist explaining a churn simulation ROI. Explain exactly WHY the intervention is profitable or non-profitable.
+Use simple, clear, and direct language that any business manager can easily understand. Avoid technical jargon or overly complex terms.
 
 Data:
 - Segment: {req_data['segment']}
@@ -263,7 +263,7 @@ Data:
 - Net LTV Saved (Revenue recovered): ₹{req_data['ltv_gained']:.0f}
 - Is Profitable: {req_data['is_profitable']}
 
-Provide exactly ONE short paragraph (2-3 sentences max) explaining what is happening. Use absolute numbers where it makes impact. Mention if the cost outweighs the recovered LTV or vice versa. Do not use JSON, just return the raw text."""
+Provide exactly ONE short paragraph (2 sentences max). Use simple business language. Avoid repeating complex math details. Make it clear and actionable."""
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -287,7 +287,7 @@ Provide exactly ONE short paragraph (2-3 sentences max) explaining what is happe
 
 def _fallback_roi_explanation(req_data):
     if req_data['is_profitable']:
-        return f"This strategy is highly profitable because the ₹{req_data['ltv_gained']:,.0f} in Lifetime Value (LTV) recovered from saving {(req_data['original_churn'] - req_data['simulated_churn'])*100:.1f}% of users easily offsets the ₹{req_data['cost']:,.0f} intervention cost."
+        return f"This intervention is profitable. Saving {(req_data['original_churn'] - req_data['simulated_churn'])*100:.1f}% of users in this segment recovers ₹{req_data['ltv_gained']:,.0f} in LTV, which easily covers the campaign cost of ₹{req_data['cost']:,.0f}."
     else:
-        return f"This strategy is flagged as non-profitable. The campaign cost of ₹{req_data['cost']:,.0f} outweighs the expected LTV recovery of ₹{req_data['ltv_gained']:,.0f}. We recommend targeting a smaller, higher-value cohort or reducing the per-user cost."
+        return f"This intervention is not profitable. The campaign cost of ₹{req_data['cost']:,.0f} is higher than the ₹{req_data['ltv_gained']:,.0f} we expect to save in customer LTV. We should reduce costs or target higher-value users."
 

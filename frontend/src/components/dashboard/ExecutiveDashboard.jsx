@@ -140,15 +140,29 @@ const CustomTooltip = ({ active, payload, label }) => {
         boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
       }}>
         <p style={{ color: '#64748b', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>{label}</p>
-        {payload.map((entry, index) => (
-          <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: entry.color }} />
-            <p style={{ color: '#0f172a', fontSize: '13px', fontWeight: 700 }}>
-              {entry.name}: {typeof entry.value === 'number' && (entry.name.toLowerCase().includes('revenue') || entry.name.toLowerCase().includes('saved') || entry.name.toLowerCase().includes('loss')) ? formatCurrency(entry.value) : entry.value}
-              {entry.name.toLowerCase().includes('risk') && !entry.name.toLowerCase().includes('revenue') ? '%' : ''}
-            </p>
-          </div>
-        ))}
+        {payload.map((entry, index) => {
+          let valStr = entry.value;
+          if (entry.dataKey === 'baseline' || entry.dataKey === 'risk') {
+            valStr = `${Number(entry.value).toFixed(1)}%`;
+          } else if (entry.dataKey === 'count') {
+            valStr = Number(entry.value).toLocaleString('en-IN');
+          } else {
+            valStr = typeof entry.value === 'number' && (entry.name?.toLowerCase().includes('revenue') || entry.name?.toLowerCase().includes('saved') || entry.name?.toLowerCase().includes('loss')) 
+              ? formatCurrency(entry.value) 
+              : entry.value;
+          }
+          const displayName = PERSONA_DEFINITIONS[entry.name]?.label 
+            ? `${PERSONA_DEFINITIONS[entry.name].label} (${entry.name})` 
+            : entry.name;
+          return (
+            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: entry.color }} />
+              <p style={{ color: '#0f172a', fontSize: '13px', fontWeight: 700 }}>
+                {displayName}: {valStr}
+              </p>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -317,6 +331,94 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
           onNavigate={onNavigate} 
         />
 
+        {/* ── Strategic Playbook Card (Horizontal, 3 Columns) ── */}
+        <div style={{ padding: '0 2.5rem 2rem' }}>
+           <div style={{ background: 'var(--bg-input)', padding: '1.75rem', borderRadius: '24px', border: '1px solid var(--border)', position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                 <div style={{ background: 'rgba(16,185,129,0.1)', padding: '0.5rem', borderRadius: '10px', color: '#10b981' }}>
+                    <Target size={20} />
+                 </div>
+                 <div style={{ fontWeight: 900, fontSize: '1.1rem', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>Strategic Playbook</div>
+                 <span style={{ marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 900, background: '#10b981', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '10px' }}>AI-POWERED</span>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
+                 {(s?.hypotheses || []).slice(0, 3).map((h, idx) => (
+                    <motion.div 
+                       whileHover={{ scale: 1.02 }}
+                       key={idx}
+                       onClick={() => setSelectedHypothesis(h)}
+                       style={{ 
+                          padding: '1.25rem', 
+                          background: 'rgba(255,255,255,0.8)', 
+                          borderRadius: '18px', 
+                          border: '1px solid rgba(0,0,0,0.05)',
+                          borderLeft: `6px solid ${CHART_COLORS[idx % CHART_COLORS.length]}`,
+                          boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between'
+                       }}
+                    >
+                       <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                             <span style={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#6366f1', letterSpacing: '0.05em' }}>{h.driver || 'Behavioral'}</span>
+                             <span style={{ fontSize: '0.65rem', fontWeight: 900, background: h.impact === 'Critical' ? 'rgba(244,63,94,0.1)' : 'rgba(245,158,11,0.1)', color: h.impact === 'Critical' ? '#f43f5e' : '#f59e0b', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
+                                {h.impact} Impact
+                             </span>
+                          </div>
+                          <div style={{ fontWeight: 900, fontSize: '1.05rem', marginBottom: '0.5rem', color: '#1e293b', lineHeight: 1.3 }}>{h.title}</div>
+                          <div style={{ fontSize: '0.82rem', color: '#475569', lineHeight: 1.6, fontWeight: 500, marginBottom: '1.25rem' }}>{h.hypothesis}</div>
+                       </div>
+                       
+                       <div>
+                          <div style={{ padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: '12px', border: '1px dashed rgba(99,102,241,0.2)' }}>
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 800, color: '#6366f1' }}>
+                                <Zap size={14} /> 
+                                <span style={{ lineHeight: 1.4 }}><strong>Execution Plan:</strong> {h.test || h.action}</span>
+                             </div>
+                             {h.expected_lift_pct && (
+                                <FormulaTooltip formula="Projected Lift = (Behavioral Gap x Model Confidence). This represents the percentage of 'At-Risk' revenue we expect to save by implementing this specific strategy." color="#10b981">
+                                   <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'help' }}>
+                                      <TrendingUp size={12} /> Projected Recovery: +{h.expected_lift_pct}% Revenue Retention
+                                   </div>
+                                </FormulaTooltip>
+                             )}
+                          </div>
+
+                          <div 
+                             onClick={(e) => {
+                                e.stopPropagation();
+                                alert(`[AI CAMPAIGN TEMPLATE]\n\nSubject: ${h.title}\n\nRecommended Channel: Email & Push Notification\nTarget Audience: ${h.driver} Segment\n\nTemplate:\n"Hi there, we noticed your ${h.driver} has changed. To help you get more value, we've unlocked a special ${h.test || 'offer'} just for you!"`);
+                             }}
+                             style={{ 
+                                marginTop: '0.85rem', textAlign: 'right', fontSize: '0.65rem', 
+                                fontWeight: 900, color: '#6366f1', cursor: 'pointer', textDecoration: 'underline'
+                             }}>
+                             View Multi-Channel Template &rarr;
+                          </div>
+                       </div>
+                    </motion.div>
+                 ))}
+              </div>
+
+              <button 
+                 onClick={onNavigate ? () => onNavigate('simulation') : undefined}
+                 style={{ 
+                   marginTop: '1.5rem', width: '100%', padding: '1.15rem', 
+                   background: 'linear-gradient(135deg, #1e293b, #0f172a)', 
+                   color: '#fff', border: 'none', borderRadius: '16px', 
+                   fontWeight: 900, fontSize: '0.9rem', cursor: 'pointer',
+                   boxShadow: '0 10px 20px rgba(0,0,0,0.15)',
+                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem'
+                 }}
+              >
+                 <Target size={18} /> Run Strategic What-If Simulation
+              </button>
+           </div>
+        </div>
+
         <div className="exec-grid-main" style={{ padding: '0 2.5rem 2.5rem', display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: '2rem' }}>
           {/* Left Column: Intelligence Visuals */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -333,11 +435,11 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                    <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={forecastData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                          <defs>
-                            <linearGradient id="colorRisk" x1="0" y1="0" x2="0" y2="1">
+                            <linearGradient id="colorBaseline" x1="0" y1="0" x2="0" y2="1">
                                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2}/>
                                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
                             </linearGradient>
-                            <linearGradient id="colorSaved" x1="0" y1="0" x2="0" y2="1">
+                            <linearGradient id="colorOptimized" x1="0" y1="0" x2="0" y2="1">
                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
                                <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                             </linearGradient>
@@ -345,21 +447,23 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                           <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} dy={10} />
                           <YAxis hide domain={[0, 'auto']} />
                           <Tooltip content={<CustomTooltip />} />
-                          <Area type="monotone" stackId="1" dataKey="risk" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorRisk)" name="Remaining Risk" />
-                          <Area type="monotone" stackId="1" dataKey="saved" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSaved)" name="Risk Prevented (Saved)" />
+                          {/* Draw Baseline Churn Risk (higher/worse, red) in the background */}
+                          <Area type="monotone" dataKey="baseline" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorBaseline)" name="No Intervention (Baseline Risk)" />
+                          {/* Draw Optimized Churn Risk (lower/better, green) in the foreground */}
+                          <Area type="monotone" dataKey="risk" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorOptimized)" name="With FinSight (Intervention Active)" />
                        </AreaChart>
                    </ResponsiveContainer>
                 </div>
                 <div style={{ display: 'flex', gap: '2rem', marginTop: '1.5rem', justifyContent: 'center' }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#f43f5e' }}>
-                      <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#f43f5e', opacity: 0.2, border: '2px solid #f43f5e' }} /> Remaining Risk
+                      <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#f43f5e', opacity: 0.2, border: '2px solid #f43f5e' }} /> No Intervention (Baseline Risk)
                    </div>
                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 700, color: '#10b981' }}>
-                      <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#10b981', opacity: 0.2, border: '2px solid #10b981' }} /> Risk Prevented (Saved)
+                      <div style={{ width: 12, height: 12, borderRadius: '4px', background: '#10b981', opacity: 0.2, border: '2px solid #10b981' }} /> With FinSight (Intervention Active)
                    </div>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '1.5rem', padding: '0.85rem', background: 'rgba(99,102,241,0.05)', borderRadius: '8px', borderLeft: '3px solid #6366f1' }}>
-                   <strong>How to read this:</strong> The red area represents the remaining baseline churn risk. The green area at the top represents the portion of risk that is removed (saved revenue) when adopting AI-recommended interventions.
+                   <strong>How to read this:</strong> The red area represents the projected churn risk if no action is taken (No Intervention). The green area represents the lower risk profile achieved by adopting FinSight's recommended interventions.
                 </div>
              </div>
 
@@ -379,6 +483,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                                outerRadius={80}
                                paddingAngle={5}
                                dataKey="count"
+                               nameKey="segment"
                             >
                                {segChurn.map((entry, index) => (
                                   <Cell key={`cell-${index}`} fill={PERSONA_DEFINITIONS[entry.segment]?.color || COLORS[index % COLORS.length]} />
@@ -551,114 +656,7 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 </div>
              </div>
 
-             {/* Strategic Recommendations */}
-             <div style={{ background: 'var(--bg-input)', padding: '1.75rem', borderRadius: '24px', border: '1px solid var(--border)', flex: 1, position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                   <div style={{ background: 'rgba(16,185,129,0.1)', padding: '0.5rem', borderRadius: '10px', color: '#10b981' }}>
-                      <Target size={20} />
-                   </div>
-                   <div style={{ fontWeight: 900, fontSize: '1.1rem', letterSpacing: '-0.01em' }}>Strategic Playbook</div>
-                   <span style={{ marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 900, background: '#10b981', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '10px' }}>AI-POWERED</span>
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                 {/* Hypotheses Switcher Tabs */}
-                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
-                    {(s?.hypotheses || []).slice(0, 3).map((h, idx) => (
-                       <button
-                          key={idx}
-                          onClick={() => setActivePlaybookTab(idx)}
-                          style={{
-                             padding: '0.5rem 0.85rem',
-                             borderRadius: '12px',
-                             background: activePlaybookTab === idx 
-                                ? (PERSONA_DEFINITIONS[h.driver]?.color || '#6366f1') 
-                                : 'rgba(0,0,0,0.03)',
-                             color: activePlaybookTab === idx ? '#fff' : 'var(--text-secondary)',
-                             border: 'none',
-                             fontSize: '0.72rem',
-                             fontWeight: 900,
-                             cursor: 'pointer',
-                             whiteSpace: 'nowrap',
-                             transition: 'all 0.2s',
-                             boxShadow: activePlaybookTab === idx ? '0 4px 12px rgba(0,0,0,0.1)' : 'none'
-                          }}
-                       >
-                          {h.driver || `Strategy ${idx + 1}`}
-                       </button>
-                    ))}
-                 </div>
 
-                 {s?.hypotheses?.[activePlaybookTab] && (() => {
-                    const h = s.hypotheses[activePlaybookTab];
-                    return (
-                       <motion.div 
-                         key={activePlaybookTab}
-                         initial={{ opacity: 0, y: 10 }}
-                         animate={{ opacity: 1, y: 0 }}
-                         whileHover={{ scale: 1.01 }}
-                         onClick={() => setSelectedHypothesis(h)}
-                         style={{ 
-                          padding: '1.25rem', 
-                          background: 'rgba(255,255,255,0.8)', 
-                          borderRadius: '18px', 
-                          border: '1px solid rgba(0,0,0,0.05)',
-                          borderLeft: `6px solid ${PERSONA_DEFINITIONS[h.driver]?.color || '#6366f1'}`,
-                          boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
-                          cursor: 'pointer'
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-                             <span style={{ fontWeight: 900, fontSize: '0.7rem', textTransform: 'uppercase', color: '#6366f1', letterSpacing: '0.05em' }}>{h.driver || 'Behavioral'}</span>
-                             <span style={{ fontSize: '0.65rem', fontWeight: 900, background: h.impact === 'Critical' ? 'rgba(244,63,94,0.1)' : 'rgba(245,158,11,0.1)', color: h.impact === 'Critical' ? '#f43f5e' : '#f59e0b', padding: '0.2rem 0.6rem', borderRadius: '20px' }}>
-                                {h.impact} Impact
-                             </span>
-                          </div>
-                          <div style={{ fontWeight: 900, fontSize: '1rem', marginBottom: '0.5rem', color: '#1e293b', lineHeight: 1.3 }}>{h.title}</div>
-                          <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.6, fontWeight: 500 }}>{h.hypothesis}</div>
-                          
-                          <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(99,102,241,0.04)', borderRadius: '12px', border: '1px dashed rgba(99,102,241,0.2)' }}>
-                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontWeight: 800, color: '#6366f1' }}>
-                                <Zap size={14} /> 
-                                <span><strong>Execution Plan:</strong> {h.test || h.action}</span>
-                             </div>
-                             {h.expected_lift_pct && (
-                               <FormulaTooltip formula="Projected Lift = (Behavioral Gap x Model Confidence). This represents the percentage of 'At-Risk' revenue we expect to save by implementing this specific strategy." color="#10b981"><div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'help' }}>
-                                  <TrendingUp size={12} /> Projected Recovery: +{h.expected_lift_pct}% Revenue Retention
-                               </div>
-                             </FormulaTooltip>
-                           )}
-                          </div>
-
-                          <div 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              alert(`[AI CAMPAIGN TEMPLATE]\n\nSubject: ${h.title}\n\nRecommended Channel: Email & Push Notification\nTarget Audience: ${h.driver} Segment\n\nTemplate:\n"Hi there, we noticed your ${h.driver} has changed. To help you get more value, we've unlocked a special ${h.test || 'offer'} just for you!"`);
-                            }}
-                            style={{ 
-                              marginTop: '0.85rem', textAlign: 'right', fontSize: '0.65rem', 
-                              fontWeight: 900, color: '#6366f1', cursor: 'pointer', textDecoration: 'underline'
-                            }}>
-                            View Multi-Channel Template &rarr;
-                          </div>
-                       </motion.div>
-                    );
-                 })()}
-                </div>
-
-                <button 
-                   onClick={onNavigate ? () => onNavigate('simulation') : undefined}
-                   style={{ 
-                     marginTop: '1.5rem', width: '100%', padding: '1.15rem', 
-                     background: 'linear-gradient(135deg, #1e293b, #0f172a)', 
-                     color: '#fff', border: 'none', borderRadius: '16px', 
-                     fontWeight: 900, fontSize: '0.9rem', cursor: 'pointer',
-                     boxShadow: '0 10px 20px rgba(0,0,0,0.15)',
-                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem'
-                   }}
-                 >
-                   <Target size={18} /> Run Strategic What-If Simulation
-                </button>
-             </div>
 
              {/* Decision Confidence Card */}
              <div style={{ background: 'linear-gradient(145deg, #1e293b, #0f172a)', padding: '2rem', borderRadius: '24px', color: '#fff', boxShadow: '0 15px 35px rgba(0,0,0,0.2)' }}>
@@ -850,13 +848,13 @@ export default function ExecutiveDashboard({ data, globalSimResult, onExportAll,
                 boxShadow: '0 25px 50px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column'
               }}
             >
-              <div style={{ padding: '2rem', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: `linear-gradient(135deg, ${PERSONA_DEFINITIONS[selectedHypothesis.driver]?.color || '#6366f1'}15, #fff)` }}>
+              <div style={{ padding: '2rem', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: `linear-gradient(135deg, ${(CHART_COLORS[(s?.hypotheses || []).indexOf(selectedHypothesis) % CHART_COLORS.length] || '#6366f1')}15, #fff)` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ background: PERSONA_DEFINITIONS[selectedHypothesis.driver]?.color || '#6366f1', color: '#fff', padding: '0.75rem', borderRadius: '14px', boxShadow: '0 8px 16px rgba(0,0,0,0.1)' }}>
+                  <div style={{ background: CHART_COLORS[(s?.hypotheses || []).indexOf(selectedHypothesis) % CHART_COLORS.length] || '#6366f1', color: '#fff', padding: '0.75rem', borderRadius: '14px', boxShadow: '0 8px 16px rgba(0,0,0,0.1)' }}>
                     <Lightbulb size={24} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: PERSONA_DEFINITIONS[selectedHypothesis.driver]?.color || '#6366f1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Strategic Evidence</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 900, color: CHART_COLORS[(s?.hypotheses || []).indexOf(selectedHypothesis) % CHART_COLORS.length] || '#6366f1', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Strategic Evidence</div>
                     <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>{selectedHypothesis.title}</h2>
                   </div>
                 </div>

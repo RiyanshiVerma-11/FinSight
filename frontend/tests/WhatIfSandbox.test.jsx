@@ -62,18 +62,21 @@ describe('WhatIfPanel', () => {
   });
 
   // ── Manual mode ─────────────────────────────────────────────────────────
-  it('shows feature selector in Manual mode', () => {
+  it('shows feature selector in Manual mode', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
+    await userEvent.click(screen.getByRole('button', { name: /Manual/i }));
     expect(screen.getByText(/Feature to Modify/i)).toBeInTheDocument();
   });
 
-  it('shows delta slider in Manual mode', () => {
+  it('shows delta slider in Manual mode', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
+    await userEvent.click(screen.getByRole('button', { name: /Manual/i }));
     expect(screen.getByRole('slider')).toBeInTheDocument();
   });
 
-  it('Run Simulation button disabled when no segment selected', () => {
+  it('Run Simulation button disabled when no segment selected', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
+    await userEvent.click(screen.getByRole('button', { name: /Manual/i }));
     const btn = screen.getByRole('button', { name: /Run Simulation/i });
     expect(btn).toBeDisabled();
   });
@@ -107,6 +110,7 @@ describe('WhatIfPanel', () => {
   // ── Simulation result ───────────────────────────────────────────────────
   it('displays impact hero card after successful simulation', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
+    await userEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     // Select segment - use more specific selector
     const select = screen.getAllByRole('combobox')[0];
@@ -123,6 +127,7 @@ describe('WhatIfPanel', () => {
 
   it('shows Prescriptive Insight section after simulation', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
+    await userEvent.click(screen.getByRole('button', { name: /Manual/i }));
     const select = screen.getAllByRole('combobox')[0];
     await userEvent.selectOptions(select, 'At Risk');
     await userEvent.click(screen.getByRole('button', { name: /Run Simulation/i }));
@@ -134,6 +139,7 @@ describe('WhatIfPanel', () => {
 
   it('shows recommendation text after simulation', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
+    await userEvent.click(screen.getByRole('button', { name: /Manual/i }));
     const select = screen.getAllByRole('combobox')[0];
     await userEvent.selectOptions(select, 'At Risk');
     await userEvent.click(screen.getByRole('button', { name: /Run Simulation/i }));
@@ -146,6 +152,7 @@ describe('WhatIfPanel', () => {
   // ── API call ─────────────────────────────────────────────────────────────
   it('calls axios.post /whatif with correct payload', async () => {
     render(<WhatIfPanel segments={MOCK_SEGMENTS} />);
+    await userEvent.click(screen.getByRole('button', { name: /Manual/i }));
     const select = screen.getAllByRole('combobox')[0];
     await userEvent.selectOptions(select, 'At Risk');
     await userEvent.click(screen.getByRole('button', { name: /Run Simulation/i }));

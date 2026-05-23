@@ -165,6 +165,13 @@ export default function DashboardLayout({
         </div>
       )}
 
+      {data?.summary?.is_summary_data && (
+        <div style={{ margin: '0 0 1rem 0', padding: '0.85rem 1rem', borderRadius: '0.75rem', border: '1px solid rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.08)', color: '#4f46e5', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 4px 6px -1px rgba(99,102,241,0.05)' }}>
+          <Database size={16} color="#4f46e5" />
+          <span>Summary dataset detected — Inter-Purchase Interval features and transaction expansions are disabled.</span>
+        </div>
+      )}
+
       {data && (
         <div className="tabs-container" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', overflowX: 'auto' }}>
           {[
@@ -187,15 +194,19 @@ export default function DashboardLayout({
         </div>
       )}
 
-      {activeTab === 'overview' && (
+      {activeTab === 'overview' && !data && (
         <OverviewTab activeTab={activeTab} data={data} s={s} globalSimResult={globalSimResult} exportPDF={exportPDF} setActiveTab={setActiveTab} setShowGuide={setShowGuide} segmentData={segmentData} lifecycleData={lifecycleData} segChurn={segChurn} shapData={shapData} cohorts={cohorts} productMix={productMix} rar={rar} totalUsers={totalUsers} churnPct={churnPct} />
       )}
 
       {data && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="dashboard-grid">
+          {activeTab === 'overview' && (
+            <OverviewTab activeTab={activeTab} data={data} s={s} globalSimResult={globalSimResult} exportPDF={exportPDF} setActiveTab={setActiveTab} setShowGuide={setShowGuide} segmentData={segmentData} lifecycleData={lifecycleData} segChurn={segChurn} shapData={shapData} cohorts={cohorts} productMix={productMix} rar={rar} totalUsers={totalUsers} churnPct={churnPct} />
+          )}
+
           {activeTab === 'executive' && (
             <div style={{ gridColumn: 'span 12' }}>
-              <ExecutiveDashboard data={data} globalSimResult={globalSimResult} onExportAll={exportPDF} onNavigate={() => setActiveTab('explainability')} />
+              <ExecutiveDashboard data={data} globalSimResult={globalSimResult} onExportAll={exportPDF} onNavigate={(tab) => setActiveTab(tab || 'explainability')} />
             </div>
           )}
 

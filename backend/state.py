@@ -1,8 +1,8 @@
 import sys
 import threading
 import os
-import contextvars
 from collections import OrderedDict
+from contextvars import ContextVar
 from types import ModuleType
 
 class LRUCache(dict):
@@ -24,11 +24,11 @@ class LRUCache(dict):
             first_key = next(iter(self))
             self.pop(first_key)
 
-_results_cache: dict = {}
+_results_cache = LRUCache(capacity=20)
 _demo_cache = None
 _engine_cache = LRUCache(capacity=5)
 _processing_status: dict = {}
-_cache_lock = threading.Lock()
+_cache_lock = threading.RLock()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, "datasets")
@@ -37,17 +37,23 @@ IS_CLOUD = os.environ.get('RENDER') is not None or os.environ.get('IS_CLOUD') ==
 MAX_ROWS = 250000 if IS_CLOUD else 1_000_000 
 MIN_USERS_TO_KEEP = 100
 
-_active_dataset_key_var = contextvars.ContextVar('active_dataset_key', default=None)
+_active_key_var: ContextVar[str | None] = ContextVar("active_key", default=None)
+
+def get_active_key() -> str:
+    return _active_key_var.get()
+
+def set_active_key(key: str) -> None:
+    _active_key_var.set(key)
 
 class StateModule(ModuleType):
     def __getattr__(self, name):
         if name == '_active_dataset_key':
-            return _active_dataset_key_var.get()
+            return get_active_key()
         return super().__getattribute__(name)
 
     def __setattr__(self, name, value):
         if name == '_active_dataset_key':
-            _active_dataset_key_var.set(value)
+            set_active_key(value)
         else:
             super().__setattr__(name, value)
 

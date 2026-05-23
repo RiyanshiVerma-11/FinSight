@@ -114,7 +114,7 @@ export default function ExplainabilityTab({ data, s, globalSimResult, exportPDF,
                         // Generic fallback
                         return isIncrease
                           ? `Elevated ${feat} shows statistical correlation with churn in the model. This feature contributes ${pct}% to the AI's churn prediction decision.`
-                          : `Declining ${feat} is an early-warning signal. This behavioral shift contributes ${pct}% to the model's risk assessment.`;
+                          : `Declining ${feat} is an early-warning signal. This behavioral trend contributes ${pct}% to the model's risk assessment.`;
                       };
 
                       return (
@@ -185,10 +185,10 @@ export default function ExplainabilityTab({ data, s, globalSimResult, exportPDF,
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   <div style={{ 
                                     width: 8, height: 8, borderRadius: '50%', 
-                                    background: p.correlation === 'Positive' ? '#f43f5e' : p.correlation === 'Negative' ? '#10b981' : '#94a3b8' 
+                                    background: p.risk_level === 'High' ? '#f43f5e' : p.risk_level === 'Low' ? '#10b981' : '#94a3b8' 
                                   }} />
                                   <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                    {p.risk_correlation || 'Neutral behavioral footprint.'}
+                                    {p.risk_insight || 'Neutral behavioral footprint.'}
                                   </span>
                                 </div>
                               </td>

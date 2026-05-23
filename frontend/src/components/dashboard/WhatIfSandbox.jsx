@@ -3,7 +3,7 @@ import axios from 'axios';
 import confetti from 'canvas-confetti';
 import {
   Sliders, Play, DollarSign, TrendingDown, Users, ArrowRight,
-  Zap, Gift, Bell, Smartphone, Tag, Trophy, FlaskConical, Info
+  Zap, Gift, Bell, Smartphone, Tag, Trophy, FlaskConical, Info, Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import FormulaTooltip from '../ui/FormulaTooltip';
@@ -58,6 +58,14 @@ const PERSONA_DEFINITIONS = {
     tax: 'Users who started their tax filing but stopped halfway. Likely facing UX friction.',
     retail: 'Users who browse frequently and add to cart but rarely complete the checkout.',
     bank_churn: 'Customers with declining credit scores or those showing erratic spending patterns.'
+  },
+  'New': {
+    label: 'The Fresh Face',
+    description: 'Recently acquired users exploring the platform. High potential for loyalty.',
+    upi: 'Newly registered users making their first few UPI transactions. Needs habit formation.',
+    tax: 'First-time filers who recently signed up. High need for guidance.',
+    retail: 'Recent first-time buyers. Needs a strong second-purchase incentive.',
+    bank_churn: 'New account holders acquired within the last 30 days.'
   }
 };
 
@@ -110,6 +118,172 @@ const DEFAULT_CAMPAIGNS = [
   { id: 'email', label: 'VIP Concierge', icon: Bell, feature: 'recency', delta: -30, description: 'Nurture Loyal Giants', costPerUser: 500 },
 ];
 
+const STRATEGIC_PRESETS = {
+  upi: [
+    {
+      id: 'strat_upi_champions',
+      title: "Reward Frequency Boost",
+      segment: "Champions",
+      feature: "frequency",
+      delta: 25,
+      description: "Supercharge your most valuable users ('The Loyal Giant') by offering 2x reward points for frequent daily UPI payments.",
+      icon: Trophy,
+      badge: "High LTV Lock-in",
+      costPerUser: 40
+    },
+    {
+      id: 'strat_upi_fading',
+      title: "Direct Monetary Nudge",
+      segment: "At Risk",
+      feature: "monetary",
+      delta: 15,
+      description: "Send ₹100 cashbacks specifically to 'At Risk' users showing declining wallet share. Restores transaction activity.",
+      icon: Gift,
+      badge: "Urgent Recovery",
+      costPerUser: 100
+    },
+    {
+      id: 'strat_upi_drifting',
+      title: "Reduce Payment Friction",
+      segment: "Needs Attention",
+      feature: "failure_rate",
+      delta: -50,
+      description: "Resolve technical errors for drifting 'Needs Attention' users. Cuts failure rate by 50% through direct server optimization.",
+      icon: Zap,
+      badge: "Friction Reduction",
+      costPerUser: 25
+    }
+  ],
+  tax: [
+    {
+      id: 'strat_tax_champions',
+      title: "VIP Advisory Upsell",
+      segment: "Champions",
+      feature: "monetary",
+      delta: 20,
+      description: "Upsell direct VIP Tax Advisory (+20% spend) to high-net-worth individuals ('The Loyal Giant') sensitive to service quality.",
+      icon: Users,
+      badge: "Premium Upsell",
+      costPerUser: 500
+    },
+    {
+      id: 'strat_tax_drifting',
+      title: "Multi-Section Bundling",
+      segment: "Needs Attention",
+      feature: "section_count",
+      delta: 40,
+      description: "Offer multi-section packages to drifting users who face friction halfway, encouraging diverse section entries.",
+      icon: Tag,
+      badge: "Complexity Nudge",
+      costPerUser: 150
+    },
+    {
+      id: 'strat_tax_atrisk',
+      title: "Late Filer Auto-Reminders",
+      segment: "At Risk",
+      feature: "recency",
+      delta: -25,
+      description: "Send automated credit/deadline reminders to at-risk users who haven't logged in recently, cutting activity delay by 25%.",
+      icon: Bell,
+      badge: "Loss Prevention",
+      costPerUser: 30
+    }
+  ],
+  retail: [
+    {
+      id: 'strat_retail_champions',
+      title: "VIP Loyalty Expansion",
+      segment: "Champions",
+      feature: "frequency",
+      delta: 30,
+      description: "Enroll 'Champions' in premium loyalty program to boost purchase frequency by 30%. Deepens high-value wallet share.",
+      icon: Trophy,
+      badge: "LTV Expansion",
+      costPerUser: 100
+    },
+    {
+      id: 'strat_retail_fading',
+      title: "Win-back Monetary Coupon",
+      segment: "At Risk",
+      feature: "monetary",
+      delta: 20,
+      description: "Provide high-value ₹200 coupons to 'At Risk' fading stars to boost average order value by 20% and trigger repeat spend.",
+      icon: Gift,
+      badge: "Win-Back Offer",
+      costPerUser: 200
+    },
+    {
+      id: 'strat_retail_lost',
+      title: "Re-engagement Push Campaign",
+      segment: "Hibernating",
+      feature: "frequency",
+      delta: 15,
+      description: "Launch direct push notification sequences targeting dormant 'Lost Souls' (Hibernating) to recover basic purchase rhythm.",
+      icon: Smartphone,
+      badge: "Dormant Recovery",
+      costPerUser: 50
+    }
+  ]
+};
+
+const parseHypothesisToPreset = (h, domain) => {
+  const title = h.title || h.driver || "AI Hypothesis";
+  const text = `${h.hypothesis || ''} ${h.action || ''} ${h.expected_impact || ''}`.toLowerCase();
+
+  let targetSegment = "At Risk";
+  if (text.includes("champion")) targetSegment = "Champions";
+  else if (text.includes("loyalist") || text.includes("steady pillar")) targetSegment = "Loyalists";
+  else if (text.includes("promising") || text.includes("rising star")) targetSegment = "Promising";
+  else if (text.includes("at risk") || text.includes("fading star")) targetSegment = "At Risk";
+  else if (text.includes("hibernating") || text.includes("lost soul") || text.includes("dormant")) targetSegment = "Hibernating";
+  else if (text.includes("attention") || text.includes("drifting")) targetSegment = "Needs Attention";
+
+  let targetFeature = "frequency";
+  if (domain === 'tax') {
+    if (text.includes("income") || text.includes("monetary") || text.includes("spend") || text.includes("advisory") || text.includes("premium")) targetFeature = "monetary";
+    else if (text.includes("diversity") || text.includes("section") || text.includes("bundle")) targetFeature = "section_count";
+    else if (text.includes("reminders") || text.includes("recency") || text.includes("delay") || text.includes("active")) targetFeature = "recency";
+    else if (text.includes("frequency") || text.includes("filing count") || text.includes("regular")) targetFeature = "frequency";
+  } else if (domain === 'upi') {
+    if (text.includes("failure") || text.includes("friction") || text.includes("error") || text.includes("server") || text.includes("optimization")) targetFeature = "failure_rate";
+    else if (text.includes("monetary") || text.includes("spend") || text.includes("wallet") || text.includes("cashback")) targetFeature = "monetary";
+    else if (text.includes("recency") || text.includes("inactive") || text.includes("active")) targetFeature = "recency";
+    else if (text.includes("frequency") || text.includes("daily") || text.includes("usage") || text.includes("points")) targetFeature = "frequency";
+  } else if (domain === 'retail') {
+    if (text.includes("monetary") || text.includes("spend") || text.includes("basket") || text.includes("order value") || text.includes("coupon")) targetFeature = "monetary";
+    else if (text.includes("recency") || text.includes("last order") || text.includes("active")) targetFeature = "recency";
+    else if (text.includes("frequency") || text.includes("loyalty") || text.includes("purchase count") || text.includes("regular")) targetFeature = "frequency";
+  }
+
+  let targetDelta = 20;
+  if (targetFeature === 'recency') targetDelta = -25;
+  if (targetFeature === 'failure_rate') targetDelta = -50;
+
+  const pctMatch = text.match(/(-?\d+)\s*%/);
+  if (pctMatch) {
+    const val = parseInt(pctMatch[1]);
+    if (val !== 0) targetDelta = val;
+  }
+
+  let Icon = Sparkles;
+  if (targetFeature === 'monetary') Icon = DollarSign;
+  else if (targetFeature === 'frequency') Icon = Trophy;
+  else if (targetFeature === 'recency') Icon = Bell;
+  else if (targetFeature === 'failure_rate') Icon = Zap;
+
+  return {
+    id: `dynamic_${Math.random().toString(36).substr(2, 9)}`,
+    title: title,
+    segment: targetSegment,
+    feature: targetFeature,
+    delta: targetDelta,
+    description: h.hypothesis || h.action || "AI recommended intervention preset.",
+    icon: Icon,
+    badge: h.confidence ? `${h.confidence} Confidence` : "AI Suggested",
+    costPerUser: targetFeature === 'monetary' ? 250 : targetFeature === 'frequency' ? 80 : 35
+  };
+};
+
 function AnimatedNumber({ value, prefix = '', suffix = '', decimals = 1 }) {
   return (
     <motion.span
@@ -124,7 +298,7 @@ function AnimatedNumber({ value, prefix = '', suffix = '', decimals = 1 }) {
   );
 }
 
-export default function WhatIfSandbox({ segments, segChurn, domain, onSimulationResult }) {
+export default function WhatIfSandbox({ segments, segChurn, domain, onSimulationResult, hypotheses, isSummaryData }) {
   const campaigns = DOMAIN_CONFIG[domain]?.campaigns || DEFAULT_CAMPAIGNS;
   const features = DOMAIN_CONFIG[domain]?.features || [
     { id: 'frequency', label: 'Frequency (+engagement)' },
@@ -138,20 +312,46 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState(null);
-  const [mode, setMode] = useState('manual'); // 'manual' | 'campaign'
+  const [activePreset, setActivePreset] = useState(null);
+  const [mode, setMode] = useState('presets'); // 'presets' | 'manual' | 'campaign'
   const [abTest, setAbTest] = useState(null);
   const [roiExplanation, setRoiExplanation] = useState(null);
 
   const segmentNames = segments ? Object.keys(segments) : [];
 
-  const runSimulation = async (overrideFeature, overrideDelta) => {
-    if (!segment) return;
+  const staticPresets = STRATEGIC_PRESETS[domain] || STRATEGIC_PRESETS['retail'];
+  const dynamicPresets = React.useMemo(() => {
+    if (!hypotheses || !Array.isArray(hypotheses)) return [];
+    return hypotheses.map(h => parseHypothesisToPreset(h, domain));
+  }, [hypotheses, domain]);
+  
+  const allPresets = React.useMemo(() => {
+    let combined = [...dynamicPresets, ...staticPresets];
+    // Sort by assumed segment LTV value to show most profitable first
+    const ltvTier = { 'Champions': 10, 'Loyalists': 8, 'Promising': 6, 'New': 5, 'At Risk': 4, 'Needs Attention': 3, 'Hibernating': 1 };
+    combined.sort((a, b) => (ltvTier[b.segment] || 0) - (ltvTier[a.segment] || 0));
+    return combined.slice(0, 5); // Just show 5 examples as requested
+  }, [dynamicPresets, staticPresets]);
+
+  const selectPreset = (preset) => {
+    setActivePreset(preset);
+    setActiveCampaign(null);
+    setSegment(preset.segment);
+    setFeature(preset.feature);
+    setDelta(preset.delta);
+    // Instant simulation execution
+    runSimulation(preset.feature, preset.delta, preset.segment);
+  };
+
+  const runSimulation = async (overrideFeature, overrideDelta, overrideSegment) => {
+    const sName = overrideSegment !== undefined ? overrideSegment : segment;
+    if (!sName) return;
     setLoading(true);
     setRoiExplanation(null);
     const f = overrideFeature || feature;
     const d = overrideDelta !== undefined ? overrideDelta : delta;
     try {
-      const r = await axios.post(`${API_URL}/whatif`, { segment, feature: f, delta_pct: d });
+      const r = await axios.post(`${API_URL}/whatif`, { segment: sName, feature: f, delta_pct: d });
       const resData = r.data;
       setResult(resData);
       if (onSimulationResult) onSimulationResult(resData);
@@ -159,18 +359,18 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
 
       // Compute local ROI for LLM
       const churnImprov = (resData.original_churn - resData.simulated_churn) * 100;
-      const sData = segChurn?.find(s => s.segment === segment);
+      const sData = segChurn?.find(s => s.segment === sName);
       const ltv = Math.round(sData?.est_ltv || 1000);
       const backendCost = sData?.intervention_cost || 15;
-      
-      const activeC = campaigns.find(c => c.feature === f && c.delta === d);
+
+      const activeC = campaigns.find(c => c.feature === f && c.delta === d) || activePreset;
       const cost = activeC ? activeC.costPerUser * resData.users_affected : backendCost * resData.users_affected;
       const ltvGained = ltv * (churnImprov / 100) * resData.users_affected;
       const profitable = ltvGained > (cost * 0.85);
 
       try {
         const explainR = await axios.post(`${API_URL}/explain-roi`, {
-          segment,
+          segment: sName,
           feature: f,
           delta_pct: d,
           original_churn: resData.original_churn,
@@ -192,7 +392,7 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
       } catch (ex) {
         console.error('LLM Explanation error', ex);
       }
-      
+
     } catch (e) {
       alert(e.response?.data?.detail || 'Simulation failed');
     }
@@ -212,20 +412,27 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
 
   const selectCampaign = (campaign) => {
     setActiveCampaign(campaign);
+    setActivePreset(null);
     setFeature(campaign.feature);
     setDelta(campaign.delta);
   };
 
   const churnImprovement = result ? (result.original_churn - result.simulated_churn) * 100 : 0;
-  const isPositive = churnImprovement > 0;
-  
+  const churnOutcome = Math.abs(churnImprovement) < 0.001 
+    ? 'neutral' 
+    : (churnImprovement > 0 ? 'positive' : 'negative');
+  const isPositive = churnOutcome === 'positive';
+
   // Real ROI logic: Use centralized backend LTV and Cost
   const segData = segChurn?.find(s => s.segment === segment);
   const avgLTV = Math.round(segData?.est_ltv || 1000);
   const backendCostPerUser = segData?.intervention_cost || 15; // Balanced fallback
-  
-  const interventionCost = activeCampaign ? activeCampaign.costPerUser * result?.users_affected : backendCostPerUser * result?.users_affected;
-  const predictedLTVGained = result ? (avgLTV * (churnImprovement / 100) * result.users_affected) : 0;
+
+  const activePresetOrCampaign = activeCampaign || activePreset;
+  const interventionCost = activePresetOrCampaign 
+    ? activePresetOrCampaign.costPerUser * (result?.users_affected || 0)
+    : backendCostPerUser * (result?.users_affected || 0);
+  const predictedLTVGained = result ? (result.ltv_saved !== undefined ? result.ltv_saved : (avgLTV * (churnImprovement / 100) * result.users_affected)) : 0;
   const isProfitable = predictedLTVGained > (interventionCost * 0.85); // Professional margin
 
   return (
@@ -237,16 +444,22 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
         </div>
         <div className="whatif-mode-toggle">
           <button
-            className={`whatif-mode-btn ${mode === 'manual' ? 'active' : ''}`}
-            onClick={() => setMode('manual')}
+            className={`whatif-mode-btn ${mode === 'presets' ? 'active' : ''}`}
+            onClick={() => setMode('presets')}
           >
-            Manual
+            AI Strategic Presets
           </button>
           <button
             className={`whatif-mode-btn ${mode === 'campaign' ? 'active' : ''}`}
             onClick={() => setMode('campaign')}
           >
             Campaigns
+          </button>
+          <button
+            className={`whatif-mode-btn ${mode === 'manual' ? 'active' : ''}`}
+            onClick={() => setMode('manual')}
+          >
+            Manual
           </button>
         </div>
       </div>
@@ -267,14 +480,14 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
 
       {/* Persona Description Box */}
       {segment && PERSONA_DEFINITIONS[segment] && (
-        <motion.div 
-          initial={{ opacity: 0, x: -10 }} 
+        <motion.div
+          initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
-          style={{ 
-            marginBottom: '1.25rem', 
-            padding: '0.85rem', 
-            background: 'rgba(99,102,241,0.04)', 
-            borderLeft: '4px solid var(--primary)', 
+          style={{
+            marginBottom: '1.25rem',
+            padding: '0.85rem',
+            background: 'rgba(99,102,241,0.04)',
+            borderLeft: '4px solid var(--primary)',
             borderRadius: '0 8px 8px 0',
             fontSize: '0.85rem'
           }}
@@ -289,7 +502,85 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
       )}
 
       <AnimatePresence mode="wait">
-        {mode === 'campaign' ? (
+        {mode === 'presets' ? (
+          <motion.div key="presets" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+            <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1rem', marginTop: '-0.5rem', lineHeight: 1.4 }}>
+              <Sparkles size={13} style={{ color: 'var(--primary)', display: 'inline', verticalAlign: 'middle', marginRight: '0.25rem' }} />
+              <strong>AI Strategic Recommendations:</strong> Pre-configured business interventions aligned with Finsight's active churn hypotheses. Click any card to automatically target the segment and simulate predicted revenue recovery in real-time.
+            </p>
+            <div className="campaign-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+              {allPresets.map((p) => {
+                const Icon = p.icon || Sparkles;
+                const isActive = activePreset?.id === p.id;
+                return (
+                  <motion.button
+                    key={p.id}
+                    className={`campaign-card ${isActive ? 'campaign-card--active' : ''}`}
+                    onClick={() => selectPreset(p)}
+                    whileHover={{ scale: 1.02, y: -2 }}
+                    whileTap={{ scale: 0.98 }}
+                    style={{
+                      textAlign: 'left',
+                      alignItems: 'flex-start',
+                      padding: '1.25rem',
+                      minHeight: '170px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      borderWidth: '2px',
+                      borderColor: isActive ? 'var(--primary)' : 'var(--border)',
+                      background: isActive ? 'rgba(99, 102, 241, 0.03)' : 'var(--bg-card)'
+                    }}
+                  >
+                    <div style={{ width: '100%' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '0.5rem' }}>
+                        <div className="campaign-card-icon" style={{ margin: 0 }}><Icon size={16} /></div>
+                        <span className="badge" style={{
+                          background: isActive ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.06)',
+                          color: 'var(--primary)',
+                          fontSize: '0.62rem',
+                          padding: '0.15rem 0.45rem',
+                          textTransform: 'uppercase',
+                          fontWeight: 800
+                        }}>
+                          {p.badge}
+                        </span>
+                      </div>
+                      <div className="campaign-card-label" style={{ fontSize: '0.88rem', fontWeight: 800, marginBottom: '0.25rem' }}>{p.title}</div>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', margin: '0.4rem 0 0.5rem' }}>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.35rem', borderRadius: '4px', background: 'rgba(245,158,11,0.08)', color: '#d97706', border: '1px solid rgba(245,158,11,0.15)' }}>
+                          Target: {PERSONA_DEFINITIONS[p.segment]?.label || p.segment}
+                        </span>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.1rem 0.35rem', borderRadius: '4px', background: 'rgba(16,185,129,0.08)', color: '#059669', border: '1px solid rgba(16,185,129,0.15)' }}>
+                          {features.find(f => f.id === p.feature)?.label || p.feature} {p.delta > 0 ? '+' : ''}{p.delta}%
+                        </span>
+                      </div>
+
+                      <div className="campaign-card-desc" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginTop: '0.25rem' }}>
+                        {p.description}
+                      </div>
+                    </div>
+
+                    {isActive && <div className="campaign-card-check" style={{ top: '1.25rem', right: '1.25rem' }}>✓</div>}
+                  </motion.button>
+                );
+              })}
+            </div>
+            {activePreset && (
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', alignItems: 'center' }}>
+                <button
+                  className="btn-primary"
+                  onClick={() => selectPreset(activePreset)}
+                  disabled={loading}
+                  style={{ flex: 1, justifyContent: 'center' }}
+                >
+                  <Play size={16} />{loading ? 'Running Simulation...' : `Re-run "${activePreset.title}" Preset`}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        ) : mode === 'campaign' ? (
           <motion.div key="campaign" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             <div className="campaign-grid">
               {campaigns.map((c) => {
@@ -359,23 +650,48 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
             exit={{ opacity: 0, y: -10 }}
           >
             {/* Big hero card - Revenue Saved / Lost */}
-            <FormulaTooltip formula="(Original Churn - Simulated Churn) × Users Affected × Avg LTV" color="#ffffff" title="Revenue Computation">
+            <FormulaTooltip 
+              formula={isSummaryData 
+                ? "(Original Churn - Simulated Churn) × Total Segment Spend" 
+                : "(Original Churn - Simulated Churn) × Segment 90-Day Spend (Monetary Velocity × 90)"} 
+              color="#ffffff" 
+              title="Revenue Computation"
+            >
               <motion.div
                 className="impact-hero-card"
                 initial={{ scale: 0.88, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-                style={{ background: isPositive ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #f43f5e, #e11d48)', cursor: 'help' }}
+                style={{ 
+                  background: churnOutcome === 'positive' 
+                    ? 'linear-gradient(135deg, #10b981, #059669)' 
+                    : (churnOutcome === 'negative' 
+                      ? 'linear-gradient(135deg, #f43f5e, #e11d48)' 
+                      : 'linear-gradient(135deg, #64748b, #475569)'), 
+                  boxShadow: churnOutcome === 'positive'
+                    ? '0 8px 32px rgba(16, 185, 129, 0.35)'
+                    : (churnOutcome === 'negative'
+                      ? '0 8px 32px rgba(244, 63, 94, 0.35)'
+                      : '0 8px 32px rgba(100, 116, 139, 0.35)'),
+                  cursor: 'help' 
+                }}
               >
                 <div className="impact-hero-icon">₹</div>
-                <div className="impact-hero-label">{isPositive ? 'Predicted Revenue Saved' : 'Potential Revenue Loss'}</div>
+                <div className="impact-hero-label">
+                  {churnOutcome === 'positive' 
+                    ? 'Predicted Revenue Saved' 
+                    : (churnOutcome === 'negative' ? 'Potential Revenue Loss' : 'No Revenue Impact')}
+                </div>
                 <div className="impact-hero-value">
                   <AnimatedNumber value={result.revenue_saved || 0} prefix="₹" decimals={0} />
                 </div>
                 <div className="impact-hero-sub">
-                  {isPositive 
-                    ? `with this intervention · ${result.users_affected} users protected` 
-                    : `due to churn increase · ${result.users_affected} users at higher risk`}
+                  {churnOutcome === 'positive'
+                    ? `with this intervention · ${result.users_affected} users protected`
+                    : (churnOutcome === 'negative'
+                      ? `due to churn increase · ${result.users_affected} users at higher risk`
+                      : `no predicted change in churn for ${result.users_affected} users`
+                    )}
                 </div>
               </motion.div>
             </FormulaTooltip>
@@ -400,16 +716,39 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
                 </div>
               </FormulaTooltip>
 
-              <FormulaTooltip formula="Absolute difference between Original and Simulated churn rates." color={isPositive ? '#10b981' : '#f43f5e'}>
-                <div className={`whatif-card whatif-card--highlight ${isPositive ? 'whatif-card--green' : 'whatif-card--red'}`} style={{ cursor: 'help', height: '100%' }}>
+              <FormulaTooltip 
+                formula="Absolute difference between Original and Simulated churn rates." 
+                color={churnOutcome === 'positive' ? '#10b981' : (churnOutcome === 'negative' ? '#f43f5e' : '#64748b')}
+              >
+                <div 
+                  className={`whatif-card whatif-card--highlight ${
+                    churnOutcome === 'positive' 
+                      ? 'whatif-card--green' 
+                      : (churnOutcome === 'negative' ? 'whatif-card--red' : '')
+                  }`} 
+                  style={{ 
+                    cursor: 'help', 
+                    height: '100%',
+                    border: churnOutcome === 'neutral' ? '1px solid rgba(100, 116, 139, 0.2)' : undefined,
+                    background: churnOutcome === 'neutral' ? 'rgba(100, 116, 139, 0.05)' : undefined
+                  }}
+                >
                   <div className="whatif-card-label">
-                    <TrendingDown size={14} /> Absolute Churn Drop
+                    <TrendingDown size={14} /> Absolute Churn Impact
                   </div>
-                  <div className="whatif-card-value" style={{ color: isPositive ? '#10b981' : '#f43f5e' }}>
+                  <div className="whatif-card-value" style={{ color: churnOutcome === 'positive' ? '#10b981' : (churnOutcome === 'negative' ? '#f43f5e' : '#64748b') }}>
                     <AnimatedNumber value={Math.abs(result.absolute_reduction || churnImprovement)} suffix="%" decimals={1} />
                   </div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 800, color: isPositive ? '#10b981' : '#f43f5e', marginTop: '0.2rem', textTransform: 'uppercase' }}>
-                    {result.reduction_pct ? `${result.reduction_pct.toFixed(1)}% Relative Lift` : (isPositive ? '▼ Reduced' : '▲ Increased')}
+                  <div style={{ 
+                    fontSize: '0.65rem', 
+                    fontWeight: 800, 
+                    color: churnOutcome === 'positive' ? '#10b981' : (churnOutcome === 'negative' ? '#f43f5e' : '#64748b'), 
+                    marginTop: '0.2rem', 
+                    textTransform: 'uppercase' 
+                  }}>
+                    {churnOutcome === 'positive' 
+                      ? '▼ Drop (Improved)' 
+                      : (churnOutcome === 'negative' ? '▲ Increase (Worsened)' : '▶ No Change (Neutral)')}
                   </div>
                 </div>
               </FormulaTooltip>
@@ -425,11 +764,16 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
             </div>
 
             {/* CAC vs LTV Dashboard */}
-            <FormulaTooltip formula="(LTV Saved - Campaign Cost). LTV Saved = Churn Δ × User Count × Segment LTV." color={isProfitable ? '#10b981' : '#f43f5e'}>
+            <FormulaTooltip 
+              formula={isSummaryData 
+                ? "Net ROI = LTV Saved - Campaign Cost. LTV Saved = Churn Drop × Segment Spend" 
+                : "Net ROI = LTV Saved - Campaign Cost. LTV Saved = Churn Drop × Segment 365-Day Spend (Monetary Velocity × 365)"} 
+              color={isProfitable ? '#10b981' : '#f43f5e'}
+            >
               <div style={{ marginTop: '1rem', background: 'var(--bg-input)', padding: '1rem', borderRadius: '0.5rem', border: `1px solid ${isProfitable ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.3)'}`, cursor: 'help' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                   <strong style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
-                    <DollarSign size={16} style={{ color: isProfitable ? '#10b981' : '#f43f5e' }}/> Retention ROI (CAC vs LTV)
+                    <DollarSign size={16} style={{ color: isProfitable ? '#10b981' : '#f43f5e' }} /> Retention ROI (CAC vs LTV)
                   </strong>
                   <span style={{ fontSize: '0.7rem', fontWeight: 800, color: isProfitable ? '#10b981' : '#f43f5e', background: isProfitable ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)', padding: '0.2rem 0.5rem', borderRadius: '1rem' }}>
                     {isProfitable ? 'HIGH ROI' : 'LOW ROI / NON-PROFITABLE'}
@@ -440,17 +784,17 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
                   <span>Net LTV Saved: <strong style={{ color: '#10b981' }}>₹{predictedLTVGained.toLocaleString()}</strong></span>
                 </div>
                 <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', fontWeight: 600, color: isProfitable ? '#059669' : '#e11d48' }}>
-                  {isProfitable 
-                    ? 'System Action: Profitable to retain. The value of users saved exceeds intervention cost.' 
+                  {isProfitable
+                    ? 'System Action: Profitable to retain. The value of users saved exceeds intervention cost.'
                     : 'System Action: Flagged. The cost of this intervention is higher than the expected LTV recovery.'}
                 </div>
               </div>
             </FormulaTooltip>
 
             {roiExplanation && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }} 
-                animate={{ opacity: 1, height: 'auto' }} 
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
                 style={{ marginTop: '1rem', background: 'rgba(99,102,241,0.05)', border: '1px dashed rgba(99,102,241,0.3)', padding: '0.85rem 1rem', borderRadius: '0.5rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}
               >
                 <div style={{ background: 'var(--primary)', padding: '0.25rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -474,10 +818,10 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
               </div>
               {result.recommendation}
               <div style={{ marginTop: '0.75rem', height: '4px', background: 'rgba(0,0,0,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                <motion.div 
-                  initial={{ width: 0 }} 
-                  animate={{ width: `${result.feature_importance * 100}%` }} 
-                  style={{ height: '100%', background: 'var(--primary)', borderRadius: '2px' }} 
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${result.feature_importance * 100}%` }}
+                  style={{ height: '100%', background: 'var(--primary)', borderRadius: '2px' }}
                 />
               </div>
               <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginTop: '0.35rem', fontStyle: 'italic' }}>

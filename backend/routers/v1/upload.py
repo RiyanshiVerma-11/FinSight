@@ -3,6 +3,8 @@ import pandas as pd
 import io
 import time
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 import state
 from routers.v1.datasets import _detect_domain, _prepare_data_df, _process_dataframe
@@ -10,6 +12,9 @@ from routers.v1.datasets import _detect_domain, _prepare_data_df, _process_dataf
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Reuse a dedicated thread pool for CPU-heavy ML analysis during uploads.
+_ml_executor = ThreadPoolExecutor(max_workers=4)
 
 @router.post("/analyze")
 async def analyze_data(file: UploadFile = File(...)):
@@ -53,9 +58,13 @@ async def analyze_data(file: UploadFile = File(...)):
     cache_key = f"upload_{file.filename}_{int(time.time())}"
     
     try:
-        result = _process_dataframe(df, cache_key=cache_key)
-        state._active_dataset_key = cache_key
-        state._engine_cache["upload"] = state._engine_cache.get(cache_key, {})
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            _ml_executor, _process_dataframe, df, cache_key
+        )
+        state.set_active_key(cache_key)
+        with state._cache_lock:
+            state._engine_cache["upload"] = state._engine_cache.get(cache_key, {})
         return result
     except Exception as e:
         logger.error(f"Analysis failed for uploaded file '{file.filename}': {e}")
@@ -65,3 +74,4 @@ async def analyze_data(file: UploadFile = File(...)):
         if "MemoryError" in detail:
             detail = "The dataset is too large for the server's RAM. Please try uploading a smaller CSV file."
         raise HTTPException(status_code=500, detail=f"Analytics engine failed: {detail}")
+

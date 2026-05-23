@@ -6,6 +6,7 @@ import logging
 import time
 import numpy as np
 import difflib
+from concurrent.futures import ThreadPoolExecutor
 
 from services.analytics import AnalyticsEngine
 from services.data_generator import set_user_pool
@@ -14,6 +15,10 @@ import state
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Thread pool for offloading CPU-heavy ML work (model tuning, training, SHAP)
+# so the async event loop stays responsive for other requests and WebSockets.
+_ml_executor = ThreadPoolExecutor(max_workers=4)
 
 # ──────────────────────────────────────
 #  Domain-aware Mapping Engines
@@ -79,246 +84,185 @@ def _detect_domain(df: pd.DataFrame) -> str:
 def _prepare_data_df(df: pd.DataFrame) -> pd.DataFrame:
     domain = _detect_domain(df)
     logger.info(f"🔍 Domain detected: {domain.upper()}")
-    if domain == "upi": return _prepare_upi_df(df)
-    elif domain == "tax": return _prepare_tax_df(df)
-    elif domain == "bank_churn": return _prepare_bank_churn_df(df)
-    else: return _prepare_retail_df(df)
+    if domain == "upi":
+        return _prepare_upi_df(df)
+    elif domain == "tax":
+        return _prepare_tax_df(df)
+    elif domain == "bank_churn":
+        return _prepare_bank_churn_df(df)
+    elif domain == "retail":
+        return _prepare_retail_df(df)
+    else:
+        return _prepare_generic_df(df)
 
-def _prepare_upi_df(df: pd.DataFrame) -> pd.DataFrame:
-    col_lower_map = {str(c).lower().strip(): c for c in df.columns}
-    rename = {}
-    for candidate in ['payer_user_id', 'user_id', 'sender_vpa', 'vpa', 'upi_id', 'customer_id', 'payer_vpa']:
-        if candidate in col_lower_map and 'user_id' not in rename.values():
-            rename[col_lower_map[candidate]] = 'user_id'; break
-    for candidate in ['ts', 'txn_date', 'timestamp', 'txn_time', 'date', 'created_at', 'time_stamp']:
-        if candidate in col_lower_map and 'timestamp' not in rename.values():
-            rename[col_lower_map[candidate]] = 'timestamp'; break
-    for candidate in ['amount_inr', 'amount', 'txn_amount', 'transaction_amount', 'value']:
-        if candidate in col_lower_map and 'amount' not in rename.values():
-            rename[col_lower_map[candidate]] = 'amount'; break
-    for candidate in ['payee_name', 'receiver_name', 'merchant', 'description', 'txn_type', 'remarks']:
-        if candidate in col_lower_map and 'description' not in rename.values():
-            rename[col_lower_map[candidate]] = 'description'; break
-    for candidate in ['status', 'response_code', 'result']:
-        if candidate in col_lower_map and 'status' not in rename.values():
-            rename[col_lower_map[candidate]] = 'status'; break
-            
-    df = df.rename(columns=rename)
-    if 'status' in df.columns:
-        df['is_failure'] = df['status'].astype(str).str.upper().isin(['FAILURE', 'FAILED', 'ERR', '0']).astype(int)
-    df['domain'] = 'upi'
-    return _prepare_retail_df(df)
+def normalize_col(c: str) -> str:
+    return str(c).lower().strip().replace(' ', '').replace('_', '').replace('-', '')
 
-def _prepare_tax_df(df: pd.DataFrame) -> pd.DataFrame:
-    col_lower_map = {str(c).lower().strip(): c for c in df.columns}
-    rename = {}
-    for candidate in ['user_id', 'pan', 'tan', 'customer_id']:
-        if candidate in col_lower_map and 'user_id' not in rename.values():
-            rename[col_lower_map[candidate]] = 'user_id'; break
-    for candidate in ['date_of_credit', 'date_of_payment', 'timestamp', 'date', 'credit_date', 'payment_date']:
-        if candidate in col_lower_map and 'timestamp' not in rename.values():
-            rename[col_lower_map[candidate]] = 'timestamp'; break
-    for candidate in ['gross_amount_inr', 'gross_amount', 'amount', 'income', 'taxable_income']:
-        if candidate in col_lower_map and 'amount' not in rename.values():
-            rename[col_lower_map[candidate]] = 'amount'; break
-    for candidate in ['deductor_name', 'income_head', 'description', 'section']:
-        if candidate in col_lower_map and 'description' not in rename.values():
-            rename[col_lower_map[candidate]] = 'description'; break
-            
-    df = df.rename(columns=rename)
-    if 'tds_amount_inr' in col_lower_map:
-        tds_col = col_lower_map['tds_amount_inr']
-        if tds_col in df.columns:
-            df['tds_amount'] = pd.to_numeric(df[tds_col], errors='coerce').fillna(0)
-            if 'amount' in df.columns:
-                df['tds_rate'] = df['tds_amount'] / (pd.to_numeric(df['amount'], errors='coerce').fillna(1).clip(lower=1))
-    if 'income_head' in col_lower_map:
-        ih_col = col_lower_map['income_head']
-        if ih_col in df.columns and 'user_id' in df.columns:
-            income_diversity = df.groupby('user_id')[ih_col].nunique().rename('income_diversity')
-            df = df.merge(income_diversity, on='user_id', how='left')
-    if 'section' in col_lower_map:
-        sec_col = col_lower_map['section']
-        if sec_col in df.columns and 'user_id' in df.columns:
-            section_count = df.groupby('user_id')[sec_col].nunique().rename('section_count')
-            df = df.merge(section_count, on='user_id', how='left')
-    if 'quarter' in col_lower_map:
-        q_col = col_lower_map['quarter']
-        if q_col in df.columns and 'user_id' in df.columns:
-            quarter_activity = df.groupby('user_id')[q_col].nunique().rename('quarters_active')
-            df = df.merge(quarter_activity, on='user_id', how='left')
-    df['domain'] = 'tax'
-    return _prepare_retail_df(df)
+# ──────────────────────────────────────
+#  Domain-Specific Mapping Dictionaries
+# ──────────────────────────────────────
 
-def _prepare_bank_churn_df(df: pd.DataFrame) -> pd.DataFrame:
-    if 'Latest_Transaction_Date' in df.columns:
-        df = df.copy()
-        df['Latest_Transaction_Date'] = pd.to_datetime(df['Latest_Transaction_Date'])
-        df['recency'] = (df['Latest_Transaction_Date'].max() - df['Latest_Transaction_Date']).dt.days
-        df['frequency'] = df['Total_Transactions']
-        df['monetary'] = df['Estimated_Salary'] * 0.15
-        df['tenure'] = df['Tenure'].fillna(0).astype(int)
-        df['ipi_consistency'] = 1.0
-        return df
+UPI_MAPPING = {
+    'user_id': ['payer_user_id', 'user_id', 'sender_vpa', 'vpa', 'upi_id', 'customer_id', 'payer_vpa'],
+    'timestamp': ['ts', 'txn_date', 'timestamp', 'txn_time', 'date', 'created_at', 'time_stamp'],
+    'amount': ['amount_inr', 'amount', 'txn_amount', 'transaction_amount', 'value'],
+    'description': ['payee_name', 'receiver_name', 'merchant', 'description', 'txn_type', 'remarks'],
+    'status': ['status', 'response_code', 'result', 'txn_status', 'transaction_status']
+}
 
-    col_lower_map = {str(c).lower().strip(): c for c in df.columns}
-    rename = {}
-    for candidate in ['customerid', 'customer_id', 'user_id', 'id']:
-        if candidate in col_lower_map and 'user_id' not in rename.values():
-            rename[col_lower_map[candidate]] = 'user_id'; break
-    for candidate in ['exited', 'churn', 'churned', 'churn_flag', 'is_churn', 'attrition']:
-        if candidate in col_lower_map and 'target_churn' not in rename.values():
-            rename[col_lower_map[candidate]] = 'target_churn'; break
-    for candidate in ['tenure', 'tenure_months']:
-        if candidate in col_lower_map and 'tenure_months' not in rename.values():
-            rename[col_lower_map[candidate]] = 'tenure_months'; break
-    for candidate in ['balance']:
-        if candidate in col_lower_map and 'amount' not in rename.values():
-            rename[col_lower_map[candidate]] = 'amount'; break
-    for candidate in ['numofproducts', 'num_of_products']:
-        if candidate in col_lower_map and 'frequency' not in rename.values():
-            rename[col_lower_map[candidate]] = 'frequency'; break
-            
-    preserve_map = {
-        'creditscore': 'credit_score', 'credit_score': 'credit_score',
-        'estimatedsalary': 'estimated_salary', 'estimated_salary': 'estimated_salary',
-        'isactivemember': 'is_active', 'is_active_member': 'is_active',
-        'hascrcard': 'has_cr_card', 'has_cr_card': 'has_cr_card',
-        'age': 'age', 'geography': 'geography', 'gender': 'gender',
-    }
-    for lower_name, target in preserve_map.items():
-        if lower_name in col_lower_map and target not in rename.values():
-            orig_col = col_lower_map[lower_name]
-            if orig_col not in rename:
-                rename[orig_col] = target
-    
-    df = df.rename(columns=rename)
-    for col in ['credit_score', 'estimated_salary', 'is_active', 'has_cr_card', 'age', 'amount']:
-        if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-    if 'amount' in df.columns and 'estimated_salary' in df.columns:
-        df['amount'] = df['amount'].where(df['amount'] > 0, df['estimated_salary'] / 12).clip(lower=100)
-    
-    now = pd.Timestamp('2024-05-10')
-    rng = np.random.default_rng(42)
-    raw_tenure = pd.to_numeric(df.get('tenure_months', pd.Series([6]*len(df), index=df.index)), errors='coerce').fillna(6)
-    actual_months = (raw_tenure * 12).clip(lower=6) if raw_tenure.max() <= 25 else raw_tenure.clip(lower=6)
-    df['tenure_months'] = actual_months
-    
-    is_churned = df.get('target_churn', pd.Series([0]*len(df), index=df.index)).astype(int)
-    expanded_rows = []
-    for idx, row in df.iterrows():
-        tenure_days = max(int(actual_months.get(idx, 6) * 30), 60)
-        n_txns = rng.integers(8, 16)
-        churned = int(is_churned.get(idx, 0))
-        base_amount = float(row.get('amount', 100))
-        for t in range(n_txns):
-            new_row = row.copy()
-            offset = rng.integers(tenure_days // 2, tenure_days) if churned and t >= n_txns // 2 else rng.integers(1, tenure_days)
-            new_row['timestamp'] = now - pd.Timedelta(days=int(offset))
-            new_row['amount'] = max(10.0, base_amount / n_txns * rng.uniform(0.5, 2.0))
-            expanded_rows.append(new_row)
-            
-    df = pd.DataFrame(expanded_rows).reset_index(drop=True)
-    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-    df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(100)
-    df['_is_summary'] = True
-    df['domain'] = 'bank_churn'
-    
-    _saved_tenure = df['tenure_months'].copy()
-    df = df.drop(columns=['tenure_months'])
-    result = _prepare_retail_df(df)
-    result['tenure_months'] = _saved_tenure.loc[result.index].fillna(0)
-    result['tenure'] = result['tenure_months']
-    return result
+TAX_MAPPING = {
+    'user_id': ['user_id', 'pan', 'tan', 'customer_id'],
+    'timestamp': ['date_of_credit', 'date_of_payment', 'timestamp', 'date', 'credit_date', 'payment_date'],
+    'amount': ['gross_amount_inr', 'gross_amount', 'amount', 'income', 'taxable_income'],
+    'description': ['deductor_name', 'income_head', 'description', 'section']
+}
 
-def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
-    mapping_dictionary = {
-        'user_id': ['userid', 'customerid', 'clientid', 'id', 'user', 'uid', 'account_number', 'member_id', 'customer_id', 'payer_user_id', 'UID', 'Account', 'VPA', 'UPI ID', 'PAN', 'Payer Name', 'Payer', 'PayerUser_ID', 'sender_vpa', 'upi_id'],
-        'timestamp': ['InvoiceDate', 'Date', 'timestamp', 'time', 'Order Date', 'date', 'Invoice Date', 'date_of_credit', 'ts', 'txn_date', 'CreatedAt', 'Date of Payment', 'Payment Date', 'Transaction Date', 'CreditDate', 'date_of_payment', 'txn_time', 'time_stamp'],
-        'amount': ['Price', 'Total', 'Amount', 'revenue', 'sum', 'amount', 'Total Price', 'TotalPrice', 'gross_amount_inr', 'amount_inr', 'TransactionAmount', 'Transaction Amount', 'TDS Amount', 'Credit', 'Debit', 'payment_amount', 'net_amount', 'gross_amount', 'txn_amount', 'transaction_amount', 'deposit', 'withdrawal', 'value'],
-        'monetary': ['balance', 'amount', 'total_spend', 'revenue', 'monetary', 'value', 'transaction_value', 'spend', 'wallet_balance', 'gross_amount_inr', 'amount_inr', 'net_worth', 'wallet', 'funds', 'capital', 'current_balance'],
-        'unit_price': ['Price', 'UnitPrice', 'Unit Price', 'price', 'unit_price', 'rate'],
-        'quantity': ['Quantity', 'Qty', 'quantity', 'count', 'units'],
-        'frequency': ['frequency', 'orders', 'numofproducts', 'products_number', 'transaction_count', 'purchase_count', 'order_count', 'txn_count', 'NumOfProducts'],
-        'tenure_months': ['tenure', 'account_age', 'membership_duration', 'months_active', 'customer_since', 'Tenure'],
-        'target_churn': ['exited', 'churn', 'churned', 'is_churn', 'left', 'attrition', 'churn_flag', 'target_churn', 'Exited', 'is_churned'],
-        'is_active': ['isactivemember', 'active', 'is_active', 'active_member', 'engagement_flag', 'IsActiveMember'],
-        'credit_score': ['creditscore', 'credit_rating', 'score', 'credit_worthiness', 'CreditScore', 'cibil_score'],
-        'monetary_velocity': ['estimated_salary', 'income', 'daily_spend', 'velocity', 'EstimatedSalary', 'annual_income'],
-        'description': ['Description', 'description', 'Product', 'product', 'ProductDescription', 'payee_name', 'merchant', 'receiver_name', 'txn_type', 'remarks']
-    }
-    
+BANK_CHURN_MAPPING = {
+    'user_id': ['customerid', 'customer_id', 'user_id', 'id'],
+    'target_churn': ['exited', 'churn', 'churned', 'churn_flag', 'is_churn', 'attrition'],
+    'credit_score': ['creditscore', 'credit_score'],
+    'estimated_salary': ['estimatedsalary', 'estimated_salary'],
+    'is_active': ['isactivemember', 'is_active_member'],
+    'has_cr_card': ['hascrcard', 'has_cr_card'],
+    'age': ['age'],
+    'geography': ['geography'],
+    'gender': ['gender'],
+    'tenure_months': ['tenure', 'tenure_months'],
+    'frequency': ['numofproducts', 'num_of_products', 'products', 'total_transactions'],
+    'monetary': ['balance', 'monetary', 'amount']
+}
+
+RETAIL_MAPPING = {
+    'user_id': ['userid', 'customerid', 'clientid', 'customer_id'],
+    'timestamp': ['InvoiceDate', 'Date', 'timestamp', 'time', 'Order Date', 'date', 'Invoice Date'],
+    'amount': ['Price', 'Total', 'Amount', 'revenue', 'sum', 'amount', 'Total Price', 'TotalPrice'],
+    'unit_price': ['Price', 'UnitPrice', 'Unit Price', 'price', 'unit_price', 'rate'],
+    'quantity': ['Quantity', 'Qty', 'quantity', 'count', 'units'],
+    'description': ['Description', 'description', 'Product', 'product', 'ProductDescription']
+}
+
+GENERIC_MAPPING = {
+    'user_id': ['userid', 'customerid', 'clientid', 'id', 'user', 'uid', 'account_number', 'member_id', 'customer_id', 'payer_user_id', 'UID', 'Account', 'VPA', 'UPI ID', 'PAN', 'Payer Name', 'Payer', 'PayerUser_ID', 'sender_vpa', 'upi_id'],
+    'timestamp': ['InvoiceDate', 'Date', 'timestamp', 'time', 'Order Date', 'date', 'Invoice Date', 'date_of_credit', 'ts', 'txn_date', 'CreatedAt', 'Date of Payment', 'Payment Date', 'Transaction Date', 'CreditDate', 'date_of_payment', 'txn_time', 'time_stamp'],
+    'amount': ['Price', 'Total', 'Amount', 'revenue', 'sum', 'amount', 'Total Price', 'TotalPrice', 'gross_amount_inr', 'amount_inr', 'TransactionAmount', 'Transaction Amount', 'TDS Amount', 'Credit', 'Debit', 'payment_amount', 'net_amount', 'gross_amount', 'txn_amount', 'transaction_amount', 'deposit', 'withdrawal', 'value'],
+    'monetary': ['balance', 'amount', 'total_spend', 'revenue', 'monetary', 'value', 'transaction_value', 'spend', 'wallet_balance', 'gross_amount_inr', 'amount_inr', 'net_worth', 'wallet', 'funds', 'capital', 'current_balance'],
+    'unit_price': ['Price', 'UnitPrice', 'Unit Price', 'price', 'unit_price', 'rate'],
+    'quantity': ['Quantity', 'Qty', 'quantity', 'count', 'units'],
+    'frequency': ['frequency', 'orders', 'numofproducts', 'products_number', 'transaction_count', 'purchase_count', 'order_count', 'txn_count', 'NumOfProducts'],
+    'tenure_months': ['tenure', 'account_age', 'membership_duration', 'months_active', 'customer_since', 'Tenure'],
+    'target_churn': ['exited', 'churn', 'churned', 'is_churn', 'left', 'attrition', 'churn_flag', 'target_churn', 'Exited', 'is_churned'],
+    'is_active': ['isactivemember', 'active', 'is_active', 'active_member', 'engagement_flag', 'IsActiveMember'],
+    'credit_score': ['creditscore', 'credit_rating', 'score', 'credit_worthiness', 'CreditScore', 'cibil_score'],
+    'monetary_velocity': ['estimated_salary', 'income', 'daily_spend', 'velocity', 'EstimatedSalary', 'annual_income'],
+    'description': ['Description', 'description', 'Product', 'product', 'ProductDescription', 'payee_name', 'merchant', 'receiver_name', 'txn_type', 'remarks']
+}
+
+def _map_domain_columns(df: pd.DataFrame, mapping_dict: dict) -> pd.DataFrame:
+    df = df.copy()
     current_cols = list(df.columns)
     found_mapping = {}
-    used_candidates = set()
-    already_mapped = {'user_id', 'timestamp', 'amount', 'description', 'status',
-                      'target_churn', 'credit_score', 'estimated_salary', 'is_active',
-                      'has_cr_card', 'age', 'tenure_months', 'frequency', 'domain',
-                      'geography', 'gender', 'customer_id'}
-    for col in already_mapped:
-        if col in current_cols: used_candidates.add(col)
-        
-    for target in ['user_id', 'timestamp', 'amount']:
-        if target in current_cols: continue
-        variations = [target] + mapping_dictionary.get(target, [])
-        for var in variations:
-            match = _fuzzy_match(var, current_cols, threshold=0.95)
-            if match and match not in used_candidates:
-                found_mapping[match] = target
-                used_candidates.add(match)
-                break
+    used_raw_cols = set()
+    
+    col_norm_map = {normalize_col(c): c for c in current_cols}
+    
+    # Priority 1: Core fields (user_id, timestamp, amount)
+    core_fields = ['user_id', 'timestamp', 'amount']
+    for target in core_fields:
+        if target in mapping_dict:
+            candidates = mapping_dict[target]
+            matched = False
+            for cand in [target] + candidates:
+                cand_norm = normalize_col(cand)
+                if cand_norm in col_norm_map:
+                    raw_col = col_norm_map[cand_norm]
+                    if raw_col not in used_raw_cols:
+                        found_mapping[raw_col] = target
+                        used_raw_cols.add(raw_col)
+                        matched = True
+                        break
+            if not matched:
+                for cand in [target] + candidates:
+                    match = _fuzzy_match(cand, [c for c in current_cols if c not in used_raw_cols], threshold=0.95)
+                    if match:
+                        found_mapping[match] = target
+                        used_raw_cols.add(match)
+                        break
+                        
+    # Priority 2: Other fields
+    for target, candidates in mapping_dict.items():
+        if target in core_fields:
+            continue
+        matched = False
+        for cand in candidates:
+            cand_norm = normalize_col(cand)
+            if cand_norm in col_norm_map:
+                raw_col = col_norm_map[cand_norm]
+                if raw_col not in used_raw_cols:
+                    found_mapping[raw_col] = target
+                    used_raw_cols.add(raw_col)
+                    matched = True
+                    break
+        if not matched:
+            for cand in candidates:
+                match = _fuzzy_match(cand, [c for c in current_cols if c not in used_raw_cols], threshold=0.8)
+                if match:
+                    found_mapping[match] = target
+                    used_raw_cols.add(match)
+                    break
+                    
+    # Rename columns based on mapping
+    df = df.rename(columns={k: v for k, v in found_mapping.items() if k != v})
+    # Store column mapping in attrs and custom property
+    df.attrs['column_mapping'] = found_mapping
+    df._column_mapping = found_mapping
+    return df
 
-    for target, variations in mapping_dictionary.items():
-        if target in found_mapping.values(): continue
-        if target in current_cols: continue
-        all_vars = [target] + variations
-        best_cand = None
-        best_score = 0
-        for var in all_vars:
-            match = _fuzzy_match(var, current_cols, threshold=0.8)
-            if match and match not in used_candidates:
-                score = difflib.SequenceMatcher(None, var.lower(), match.lower()).ratio()
-                if score > best_score:
-                    best_score = score
-                    best_cand = match
-        if best_cand:
-            found_mapping[best_cand] = target
-            used_candidates.add(best_cand)
+def _clean_and_post_process_df(df: pd.DataFrame, domain: str) -> pd.DataFrame:
+    # 1. Standardize types and fill NaNs for numeric targets
+    numeric_targets = ['monetary', 'unit_price', 'quantity', 'frequency', 'tenure_months', 'is_active', 'credit_score', 'monetary_velocity', 'estimated_salary']
+    for target in numeric_targets:
+        if target in df.columns:
+            df[target] = pd.to_numeric(df[target], errors='coerce').fillna(0)
             
-    if found_mapping:
-        df = df.rename(columns=found_mapping)
-        numeric_targets = ['monetary', 'unit_price', 'quantity', 'frequency', 'tenure_months', 'is_active', 'credit_score', 'monetary_velocity']
-        for target in numeric_targets:
-            if target in df.columns:
-                df[target] = pd.to_numeric(df[target], errors='coerce').fillna(0)
-        if 'monetary' in df.columns and 'amount' not in df.columns:
-            df['transaction_amount'] = df['monetary']
-            df['amount'] = df['monetary'].copy()
-        elif 'amount' in df.columns and 'monetary' not in df.columns:
-            df['monetary'] = df['amount'].copy()
-        if 'user_id' in df.columns and 'customer_id' not in df.columns: df['customer_id'] = df['user_id'].copy()
-        elif 'customer_id' in df.columns and 'user_id' not in df.columns: df['user_id'] = df['customer_id'].copy()
-
+    # 2. Align monetary and amount
+    if 'monetary' in df.columns and 'amount' not in df.columns:
+        df['transaction_amount'] = df['monetary']
+        df['amount'] = df['monetary'].copy()
+    elif 'amount' in df.columns and 'monetary' not in df.columns:
+        df['monetary'] = df['amount'].copy()
+        
+    # 3. Align user_id and customer_id
+    if 'user_id' in df.columns and 'customer_id' not in df.columns:
+        df['customer_id'] = df['user_id'].copy()
+    elif 'customer_id' in df.columns and 'user_id' not in df.columns:
+        df['user_id'] = df['customer_id'].copy()
+        
+    # 4. Standardize target_churn
     if 'target_churn' in df.columns:
         if df['target_churn'].dtype == object or df['target_churn'].dtype == bool:
             pos_labels = ['yes', 'true', '1', 'exited', 'churned', 'churn', 'left', 'attrition', '1.0']
             df['target_churn'] = df['target_churn'].astype(str).str.lower().str.strip().isin(pos_labels).astype(int)
         else:
             df['target_churn'] = pd.to_numeric(df['target_churn'], errors='coerce').fillna(0).astype(int)
-
-    desc_cols = ['Description', 'description', 'Product', 'product', 'ProductDescription', 'payee_name', 'merchant', 'receiver_name']
-    for c in desc_cols:
-        if c in df.columns and c != 'description':
-            df = df.rename(columns={c: 'description'})
-            break
-
+            
+    # 5. Fallback description mapping (strictly avoided for bank_churn)
+    if domain != 'bank_churn':
+        desc_cols = ['Description', 'description', 'Product', 'product', 'ProductDescription', 'payee_name', 'merchant', 'receiver_name']
+        for c in desc_cols:
+            if c in df.columns and c != 'description':
+                df = df.rename(columns={c: 'description'})
+                break
+                
+    # 6. Deduplicate columns
     df = df.loc[:, ~df.columns.duplicated()]
-
+    
+    # 7. Clean user_id
     if 'user_id' in df.columns:
         df['user_id'] = df['user_id'].astype(str).str.strip()
         df = df[df['user_id'].str.len() > 0]
         df = df[~df['user_id'].isin(['0', 'nan', 'None', 'null'])]
-
+        
+    # 8. Standardize timestamp
     if 'timestamp' in df.columns:
         try:
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
@@ -331,18 +275,22 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
         except Exception as e:
             logger.warning(f"Datetime conversion fallback: {e}")
             df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-        if df['timestamp'].notna().any(): df = df.dropna(subset=['timestamp'])
-        else: df = df.drop(columns=['timestamp'])
-
+        if df['timestamp'].notna().any():
+            df = df.dropna(subset=['timestamp'])
+        else:
+            df = df.drop(columns=['timestamp'])
+            
+    # 9. Handle unit_price / quantity fallback for amount
     if 'amount' not in df.columns and 'unit_price' in df.columns and 'quantity' in df.columns:
         df['unit_price'] = pd.to_numeric(df['unit_price'], errors='coerce').fillna(0)
         df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
         df['amount'] = df['unit_price'] * df['quantity']
     elif 'amount' in df.columns:
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(0)
-
-    _is_summary_data = 'timestamp' not in df.columns and 'tenure_months' in df.columns
-    if _is_summary_data:
+        
+    # 10. Summary expansion logic
+    _is_summary_data = ('timestamp' not in df.columns and 'tenure_months' in df.columns) or ('_is_summary' in df.columns and bool(df['_is_summary'].any()))
+    if _is_summary_data and not ('_is_summary' in df.columns and bool(df['_is_summary'].any())):
         now = pd.Timestamp('2024-05-10')
         raw_tenure = pd.to_numeric(df['tenure_months'], errors='coerce').fillna(1)
         actual_months = (raw_tenure * 12).clip(lower=6) if raw_tenure.max() <= 25 else raw_tenure.clip(lower=6)
@@ -368,13 +316,20 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(100)
         df['_is_summary'] = True
-
-    if 'Invoice' in df.columns: df = df[~df['Invoice'].astype(str).str.startswith('C', na=False)]
-    if 'amount' in df.columns and not _is_summary_data: df = df[df['amount'] > 0]
-
+        
+    # 11. Invoice Cancellation filter
+    if 'Invoice' in df.columns:
+        df = df[~df['Invoice'].astype(str).str.startswith('C', na=False)]
+        
+    # 12. Non-positive amount filtering
+    if 'amount' in df.columns and not _is_summary_data:
+        df = df[df['amount'] > 0]
+        
+    # 13. Drop rows missing key fields
     required = ['user_id', 'timestamp', 'amount']
     df = df.dropna(subset=[c for c in required if c in df.columns])
     
+    # 14. Row limit sampling
     if len(df) > state.MAX_ROWS:
         unique_users = df['user_id'].unique()
         keep_ratio = state.MAX_ROWS / len(df)
@@ -383,10 +338,141 @@ def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
         keep_users = rng.choice(unique_users, num_users_to_keep, replace=False)
         df = df[df['user_id'].isin(keep_users)]
         
+    # 15. Final monetary alignment
     if 'amount' in df.columns and 'monetary' not in df.columns:
         df['monetary'] = df['amount'].copy()
         
     return df
+
+def _prepare_upi_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = _map_domain_columns(df, UPI_MAPPING)
+    if 'status' in df.columns:
+        df['is_failure'] = df['status'].astype(str).str.upper().isin(['FAILURE', 'FAILED', 'ERR', '0']).astype(int)
+    df['domain'] = 'upi'
+    return _clean_and_post_process_df(df, 'upi')
+
+def _prepare_tax_df(df: pd.DataFrame) -> pd.DataFrame:
+    col_norm_map = {normalize_col(c): c for c in df.columns}
+    
+    # Identify user_id column first (e.g. pan, customer_id, user_id)
+    user_col = None
+    for cand in ['user_id', 'pan', 'tan', 'customer_id']:
+        cand_norm = normalize_col(cand)
+        if cand_norm in col_norm_map:
+            user_col = col_norm_map[cand_norm]
+            break
+
+    # Calculate tax diversity/count features using the original user column name BEFORE renaming/merging
+    if user_col:
+        ih_col = col_norm_map.get(normalize_col('income_head'))
+        if ih_col and ih_col in df.columns:
+            income_diversity = df.groupby(user_col)[ih_col].nunique().rename('income_diversity')
+            df = df.merge(income_diversity, on=user_col, how='left')
+            
+        sec_col = col_norm_map.get(normalize_col('section'))
+        if sec_col and sec_col in df.columns:
+            section_count = df.groupby(user_col)[sec_col].nunique().rename('section_count')
+            df = df.merge(section_count, on=user_col, how='left')
+            
+        q_col = col_norm_map.get(normalize_col('quarter'))
+        if q_col and q_col in df.columns:
+            quarter_activity = df.groupby(user_col)[q_col].nunique().rename('quarters_active')
+            df = df.merge(quarter_activity, on=user_col, how='left')
+
+    df = _map_domain_columns(df, TAX_MAPPING)
+    
+    # Calculate TDS rate using the normalized amount column
+    tds_col = col_norm_map.get(normalize_col('tds_amount_inr'))
+    if tds_col and tds_col in df.columns:
+        df['tds_amount'] = pd.to_numeric(df[tds_col], errors='coerce').fillna(0)
+        if 'amount' in df.columns:
+            df['tds_rate'] = df['tds_amount'] / (pd.to_numeric(df['amount'], errors='coerce').fillna(1).clip(lower=1))
+            
+    df['domain'] = 'tax'
+    return _clean_and_post_process_df(df, 'tax')
+
+def _prepare_bank_churn_df(df: pd.DataFrame) -> pd.DataFrame:
+    col_norm_map = {normalize_col(c): c for c in df.columns}
+    
+    # 1. Map columns using BANK_CHURN_MAPPING
+    df = _map_domain_columns(df, BANK_CHURN_MAPPING)
+    
+    # Convert tenure (years) to months if raw max is low (<= 25)
+    if 'tenure_months' in df.columns:
+        raw_tenure = pd.to_numeric(df['tenure_months'], errors='coerce').fillna(6.0).astype(float)
+        if raw_tenure.max() <= 25:
+            df['tenure_months'] = raw_tenure * 12.0
+        else:
+            df['tenure_months'] = raw_tenure
+    
+    # 2. Standardize types and fill NaNs for key numeric columns
+    for col in ['credit_score', 'estimated_salary', 'is_active', 'has_cr_card', 'age']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
+    # 3. Compute recency & timestamp
+    now = pd.Timestamp('2024-05-10')
+    date_col = None
+    for cand in ['latest_transaction_date', 'latest_transaction', 'last_transaction_date', 'transaction_date']:
+        cand_norm = normalize_col(cand)
+        if cand_norm in col_norm_map:
+            date_col = col_norm_map[cand_norm]
+            break
+            
+    if date_col:
+        df['Latest_Transaction_Date'] = pd.to_datetime(df[date_col], errors='coerce')
+        max_date = df['Latest_Transaction_Date'].max()
+        if pd.isnull(max_date):
+            max_date = now
+        df['recency'] = (max_date - df['Latest_Transaction_Date']).dt.days.fillna(30.0).astype(float)
+        df['timestamp'] = df['Latest_Transaction_Date'].fillna(now)
+    else:
+        # Fallback to tenure * 30 or default 180
+        if 'tenure_months' in df.columns:
+            tenure_val = pd.to_numeric(df['tenure_months'], errors='coerce').fillna(72.0).astype(float)
+            df['recency'] = tenure_val * 30.0
+        else:
+            df['recency'] = 180.0
+        df['timestamp'] = now - pd.to_timedelta(df['recency'], unit='D')
+        
+    # 4. Compute frequency
+    if 'frequency' in df.columns:
+        df['frequency'] = pd.to_numeric(df['frequency'], errors='coerce').fillna(1.0).astype(float)
+    else:
+        df['frequency'] = 2.0
+        
+    # 5. Compute monetary & amount
+    if 'monetary' in df.columns:
+        df['monetary'] = pd.to_numeric(df['monetary'], errors='coerce').fillna(100.0).astype(float)
+    else:
+        df['monetary'] = 500.0
+    df['amount'] = df['monetary']
+    
+    # 6. Compute tenure & tenure_months
+    if 'tenure_months' in df.columns:
+        df['tenure'] = pd.to_numeric(df['tenure_months'], errors='coerce').fillna(72.0).astype(float)
+        df['tenure_months'] = df['tenure']
+    else:
+        df['tenure'] = 72.0
+        df['tenure_months'] = 72.0
+        
+    df['_is_summary'] = True
+    df['domain'] = 'bank_churn'
+    
+    result = _clean_and_post_process_df(df, 'bank_churn')
+    result['_is_summary'] = True
+    result['tenure'] = result.get('tenure_months', 72.0)
+    return result
+
+def _prepare_retail_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = _map_domain_columns(df, RETAIL_MAPPING)
+    df['domain'] = 'retail'
+    return _clean_and_post_process_df(df, 'retail')
+
+def _prepare_generic_df(df: pd.DataFrame) -> pd.DataFrame:
+    df = _map_domain_columns(df, GENERIC_MAPPING)
+    df['domain'] = 'generic'
+    return _clean_and_post_process_df(df, 'generic')
 
 def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     eng = AnalyticsEngine()
@@ -413,7 +499,7 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     final_df = churn_results.merge(lifecycle, on='user_id', how='left')
     final_df = final_df.loc[:, ~final_df.columns.duplicated()]
 
-    hypotheses = eng.generate_hypotheses(drivers, final_df)
+    hypotheses = eng.generate_hypotheses(drivers, final_df, metrics)
 
     try: forecast_data = eng.compute_churn_forecast(final_df, cohort_data, metrics)
     except Exception as e:
@@ -428,11 +514,16 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
 
     best_model = metrics.get('primary_model', 'Random Forest')
 
+    column_mapping = getattr(df, '_column_mapping', getattr(df, 'attrs', {}).get('column_mapping', {}))
+    clean_mapping = {str(k): str(v) for k, v in column_mapping.items()} if column_mapping else {}
+
     summary = {
         "total_users": int(final_df['user_id'].nunique()),
         "avg_churn_risk": float((final_df['churn_probability'] * final_df['monetary']).sum() / max(final_df['monetary'].sum(), 1)),
         "baseline_churn_rate": float(final_df['churn_probability'].mean()),
         "data_health": eng._calculate_data_health(df),
+        "is_summary_data": bool('_is_summary' in df.columns and df['_is_summary'].any()),
+        "column_mapping": clean_mapping,
         "segments": segments_dict,
         "lifecycle_stages": final_df['lifecycle'].value_counts().to_dict(),
         "top_drivers": drivers,
@@ -475,7 +566,8 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
     combined_sample = pd.concat([new_users, other_users]).head(1000)
     user_data = combined_sample.to_dict(orient='records')
 
-    state._engine_cache[cache_key] = {'engine': eng, 'rfm_df': churn_results, 'shap_data': shap_data}
+    with state._cache_lock:
+        state._engine_cache[cache_key] = {'engine': eng, 'rfm_df': churn_results, 'shap_data': shap_data}
 
     try: set_user_pool(final_df['user_id'].tolist())
     except Exception as e: logger.warning(f"Could not update LiveTicker pool: {e}")
@@ -526,9 +618,11 @@ async def _analyze_all_live():
     if 'StockCode' in combined.columns: dedupe_candidates.append('StockCode')
     existing_keys = [c for c in dedupe_candidates if c in combined.columns]
     if existing_keys: combined = combined.drop_duplicates(subset=existing_keys)
-    result = _process_dataframe(combined, cache_key="all")
+    result = await asyncio.get_running_loop().run_in_executor(
+        _ml_executor, _process_dataframe, combined, "all"
+    )
     state._results_cache["all"] = result
-    state._active_dataset_key = "all"
+    state.set_active_key("all")
     return result
 
 # ──────────────────────────────────────
@@ -547,7 +641,7 @@ async def list_datasets():
 async def analyze_local(filename: str = Query(...)):
     if filename in state._results_cache:
         logger.info(f"⚡ Serving '{filename}' from cache")
-        state._active_dataset_key = filename
+        state.set_active_key(filename)
         return state._results_cache[filename]
     if filename == "all": return await _analyze_all_live()
     file_path = os.path.join(state.DATASET_DIR, filename)
@@ -556,9 +650,11 @@ async def analyze_local(filename: str = Query(...)):
     df = _prepare_data_df(df)
     required = ['user_id', 'timestamp', 'amount']
     if not all(c in df.columns for c in required): raise HTTPException(status_code=400, detail=f"Missing columns. Found: {list(df.columns)}")
-    result = _process_dataframe(df, cache_key=filename)
+    result = await asyncio.get_running_loop().run_in_executor(
+        _ml_executor, _process_dataframe, df, filename
+    )
     state._results_cache[filename] = result
-    state._active_dataset_key = filename
+    state.set_active_key(filename)
     return result
 
 @router.get("/demo-data")
@@ -569,7 +665,7 @@ async def get_default_data():
             ready_keys.sort(key=lambda x: 0 if 'upi' in x.lower() else 1)
             first_key = ready_keys[0]
             logger.info(f"⚡ Serving ready dataset '{first_key}' from cache")
-            state._active_dataset_key = first_key
+            state.set_active_key(first_key)
             return state._results_cache[first_key]
     files = [f for f in os.listdir(state.DATASET_DIR) if f.endswith(('.csv', '.xlsx'))]
     files.sort(key=lambda x: 0 if 'upi' in x.lower() else 1)
@@ -578,18 +674,19 @@ async def get_default_data():
         for _ in range(2):
             with state._cache_lock:
                 if fname in state._results_cache and state._processing_status.get(fname) == "ready":
-                    state._active_dataset_key = fname
+                    state.set_active_key(fname)
                     return state._results_cache[fname]
             await asyncio.sleep(1)
     synthetic_key = "synthetic_demo"
     if synthetic_key in state._results_cache:
-        state._active_dataset_key = synthetic_key
+        state.set_active_key(synthetic_key)
         return state._results_cache[synthetic_key]
     logger.warning("⚠️ Real datasets not ready. Serving deterministic synthetic demo dataset.")
     demo_df = _build_synthetic_demo_df()
-    result = _process_dataframe(demo_df, cache_key=synthetic_key)
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(_ml_executor, _process_dataframe, demo_df, synthetic_key)
     result["summary"]["is_synthetic_demo"] = True
     result["summary"]["source_note"] = "Serving fallback synthetic data while background engine warms up."
     with state._cache_lock: state._results_cache[synthetic_key] = result
-    state._active_dataset_key = synthetic_key
+    state.set_active_key(synthetic_key)
     return result

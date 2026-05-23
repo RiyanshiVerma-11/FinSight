@@ -28,11 +28,11 @@ vi.mock('recharts', () => {
 // ── Framer Motion (Explicit Mocks) ──
 vi.mock('framer-motion', () => {
   const motionProps = [
-    'animate', 'initial', 'exit', 'variants', 'transition', 
-    'whileHover', 'whileTap', 'whileInView', 'viewport', 
+    'animate', 'initial', 'exit', 'variants', 'transition',
+    'whileHover', 'whileTap', 'whileInView', 'viewport',
     'onAnimationStart', 'onAnimationComplete', 'layout'
   ];
-  
+
   const filterProps = (props) => {
     const newProps = { ...props };
     motionProps.forEach(p => delete newProps[p]);
@@ -59,20 +59,27 @@ vi.mock('framer-motion', () => {
 
 // ── Lucide React (Explicit Mocks) ──
 vi.mock('lucide-react', () => {
-  const MockIcon = () => <svg />;
-  const icons = [
-    'Users', 'ShieldAlert', 'DollarSign', 'TrendingUp', 'TrendingDown', 
-    'Target', 'Zap', 'CheckCircle', 'X', 'LayoutDashboard', 'Download', 
-    'FileText', 'Briefcase', 'Activity', 'Award', 'AlertTriangle', 
-    'Lightbulb', 'Brain', 'Info', 'MessageSquare', 'ShieldCheck',
-    'Gift', 'Smartphone', 'Tag', 'Trophy', 'Bell', 'FlaskConical', 
-    'RefreshCw', 'Sliders', 'Play', 'ArrowRight', 'CheckCircle2'
-  ];
-  const mocks = {};
-  icons.forEach(icon => {
-    mocks[icon] = MockIcon;
-  });
-  return mocks;
+  const MockIcon = React.forwardRef((props, ref) => <svg ref={ref} {...props} />);
+  return new Proxy(
+    { __esModule: true },
+    {
+      get: (target, prop) => {
+        if (prop === '__esModule') return true;
+        return MockIcon;
+      },
+      has: (target, prop) => {
+        return true;
+      },
+      getOwnPropertyDescriptor: (target, prop) => {
+        return {
+          value: MockIcon,
+          writable: true,
+          enumerable: true,
+          configurable: true
+        };
+      }
+    }
+  );
 });
 
 globalThis.ResizeObserver = class { observe() { } unobserve() { } disconnect() { } };
