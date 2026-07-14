@@ -74,7 +74,7 @@ async def get_hypotheses():
 
 @router.post("/explain-roi")
 async def explain_roi(req: ROIExplainRequest):
-    explanation = await generate_roi_explanation(req.dict())
+    explanation = await generate_roi_explanation(req.model_dump())
     return {"explanation": explanation}
 
 @router.get("/interventions")

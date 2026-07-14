@@ -286,7 +286,17 @@ class AnalyticsEngine:
             ipi_data = temp_df.groupby('user_id')['diff'].agg(
                 ipi_median='median',
                 ipi_std='std'
-            ).fillna(100) # Penalty for one-time buyers
+            )
+            # Data-driven fill for one-time buyers: use the dataset's own median IPI
+            # instead of an arbitrary constant. Capped at the 90th percentile to prevent
+            # outlier skew from inflating the fill value.
+            multi_tx_ipi = ipi_data['ipi_median'].dropna()
+            if len(multi_tx_ipi) > 0:
+                dataset_median_ipi = float(min(multi_tx_ipi.median(), multi_tx_ipi.quantile(0.9)))
+            else:
+                dataset_median_ipi = 30.0  # Sensible default when no multi-transaction users exist
+            ipi_data['ipi_median'] = ipi_data['ipi_median'].fillna(dataset_median_ipi)
+            ipi_data['ipi_std'] = ipi_data['ipi_std'].fillna(0.0)  # One-time buyers have zero variance
             
             # Calculate Consistency Score (0 to 1)
             rfm['ipi_consistency'] = 1 / (1 + ipi_data['ipi_std'] / 30.0)
@@ -313,7 +323,7 @@ class AnalyticsEngine:
             # Fallback to rank-based qcut if values are too clustered
             try:
                 rfm['r_score'] = pd.qcut(rfm['recency'].rank(method='first'), 5, labels=[5, 4, 3, 2, 1])
-            except:
+            except Exception:
                 rfm['r_score'] = 3 # Neutral fallback
 
         for col in ['frequency', 'monetary']:
@@ -322,7 +332,7 @@ class AnalyticsEngine:
             except (ValueError, IndexError):
                 try:
                     rfm[f'{col[0]}_score'] = pd.qcut(rfm[col].rank(method='first'), 5, labels=[1, 2, 3, 4, 5])
-                except:
+                except Exception:
                     rfm[f'{col[0]}_score'] = 3 # Neutral fallback
 
         # Ensure numeric scores and handle remaining NaNs
@@ -340,11 +350,10 @@ class AnalyticsEngine:
         if 'segment' in rfm.columns:
             rfm = rfm.drop(columns=['segment'])
             
-        rfm['segment'] = [
+        rfm['segment'] = pd.Series([
             self._assign_segment(int(row['r_score']), int(row['f_score']), int(row['m_score']), row.get('account_age_days'))
             for _, row in rfm.iterrows()
-        ]
-        rfm['segment'] = rfm['segment'].astype(str)
+        ], index=rfm.index).astype(str)
 
         # K-Means Clustering - Added safety guard for empty or small datasets
         if rfm.empty or len(rfm) < 2:
@@ -352,6 +361,7 @@ class AnalyticsEngine:
             self._last_rfm = rfm.reset_index()
             return rfm.reset_index(), 0.0
 
+        scaled_features = None
         try:
             features = rfm[['recency', 'frequency', 'monetary']]
             scaled_features = self.scaler.fit_transform(features)
@@ -361,18 +371,19 @@ class AnalyticsEngine:
             logger.warning(f"Clustering failed: {e}")
             rfm['cluster'] = 0
 
-        try:
-            # OPTIMIZATION: Silhouette is O(N^2). Sample if N is large.
-            if len(rfm) > 5000:
-                rng = np.random.default_rng(seed=42)
-                indices = rng.choice(len(rfm), 5000, replace=False)
-                sil_score = silhouette_score(scaled_features[indices], rfm['cluster'].iloc[indices])
-                logger.info(f"Silhouette score calculated using 5,000 sample points (N={len(rfm)})")
-            else:
-                sil_score = silhouette_score(scaled_features, rfm['cluster'])
-        except Exception as e:
-            logger.error(f"Error calculating silhouette score: {e}")
-            sil_score = 0.0
+        sil_score = 0.0
+        if scaled_features is not None:
+            try:
+                # OPTIMIZATION: Silhouette is O(N^2). Sample if N is large.
+                if len(rfm) > 5000:
+                    rng = np.random.default_rng(seed=42)
+                    indices = rng.choice(len(rfm), 5000, replace=False)
+                    sil_score = silhouette_score(scaled_features[indices], np.asarray(rfm['cluster'])[indices])
+                    logger.info(f"Silhouette score calculated using 5,000 sample points (N={len(rfm)})")
+                else:
+                    sil_score = silhouette_score(scaled_features, rfm['cluster'])
+            except Exception as e:
+                logger.error(f"Error calculating silhouette score: {e}")
 
         self._last_rfm = rfm.reset_index()
         return rfm.reset_index(), sil_score
@@ -453,6 +464,8 @@ class AnalyticsEngine:
                 X_current = current_features[feature_cols].fillna(0)
                 # Safety guard: ensure loaded model is truly fitted before predict
                 with self.model_lock:
+                    if self.best_model is None:
+                        raise ValueError("Model is not initialized/fitted.")
                     check_is_fitted(self.best_model)
                     logger.info(f"🔍 [Cache] Predicting churn for {len(X_current)} users...")
                     raw_probs = self.best_model.predict_proba(X_current)
@@ -485,7 +498,7 @@ class AnalyticsEngine:
                 # Cache explainer
                 if HAS_SHAP:
                     try: self._explainer = shap.TreeExplainer(self._raw_model)
-                    except: self._explainer = None
+                    except Exception: self._explainer = None
                 
                 # NOTE: Performance Optimization ── Return immediately if cache is hit
                 # to prevent redundant retraining and OOM crashes on large datasets.
@@ -554,6 +567,8 @@ class AnalyticsEngine:
             current_features = merged_df[feature_columns].fillna(0)
             
             with self.model_lock:
+                if self.best_model is None:
+                    raise ValueError("Model is not initialized/fitted.")
                 check_is_fitted(self.best_model)
                 raw_probs = self.best_model.predict_proba(current_features)
                 probs = np.array(raw_probs)[:, 1]
@@ -677,23 +692,34 @@ class AnalyticsEngine:
             if self._is_fitted(self.best_model):
                 X_train = X_train_full
                 X_test = X_train_full
+                X_cal = X_train_full  # No separate calibration for tiny datasets
                 y_train = y_train_full
                 y_test = y_train_full
+                y_cal = y_train_full
             else:
                 # Fallback if dataset is too small or has no variance
                 logger.warning("⚠️ Dataset too small for training. Using fallback results.")
                 return self._fallback_churn_results(rfm_df, feature_cols)
         else:
-            # 3. Stratified split for model evaluation
-            # Gracefully degrade to non-stratified if any class has < 2 samples
+            # 3. THREE-WAY SPLIT: Train (60%) / Calibration (20%) / Test (20%)
+            # This prevents data leakage: calibration uses a dedicated holdout,
+            # and the test set is NEVER seen by the model or calibrator.
             min_class_samples = int(y_train_full.value_counts().min())
             use_stratify = min_class_samples >= 2
             if not use_stratify:
                 logger.warning(f"Skipping stratified split: smallest class has {min_class_samples} sample(s). Using random split.")
-            X_train, X_test, y_train, y_test = train_test_split(
+            # First split: 80% train+cal, 20% test
+            X_train_cal, X_test, y_train_cal, y_test = train_test_split(
                 X_train_full, y_train_full, test_size=0.2, random_state=42,
                 stratify=y_train_full if use_stratify else None
             )
+            # Second split: from the 80%, take 75% train (=60% total) and 25% cal (=20% total)
+            cal_stratify = y_train_cal if (use_stratify and int(y_train_cal.value_counts().min()) >= 2) else None
+            X_train, X_cal, y_train, y_cal = train_test_split(
+                X_train_cal, y_train_cal, test_size=0.25, random_state=42,
+                stratify=cal_stratify
+            )
+            logger.info(f"📊 3-way split: Train={len(X_train)}, Calibration={len(X_cal)}, Test={len(X_test)}")
 
         # ── STEP 3: Train models (skip only if verified fitted model loaded from cache) ──
         if not self._is_fitted(self.best_model):
@@ -754,7 +780,11 @@ class AnalyticsEngine:
                             n_jobs=1
                         )
                         stack.fit(X_train, y_train)
-                        stack_proba = stack.predict_proba(X_test)[:, 1]
+                        proba_res = stack.predict_proba(X_test)
+                        if isinstance(proba_res, list):
+                            stack_proba = proba_res[0][:, 1]
+                        else:
+                            stack_proba = proba_res[:, 1]
                         stack_auc = float(roc_auc_score(y_test, stack_proba))
                         logger.info(f"🏗️ Stacking AUC: {stack_auc:.4f} vs best single: {auc_val:.4f}")
                         if stack_auc > auc_val:
@@ -767,31 +797,28 @@ class AnalyticsEngine:
                     logger.warning(f"Stacking failed, keeping single model: {e}")
 
             # ── Calibration for better probability estimates ──
-            logger.info("Calibrating probabilities...")
+            # Uses the DEDICATED calibration split (X_cal, y_cal) — NOT the test set.
+            # This eliminates data leakage: the test set is never touched by the calibrator.
+            logger.info("Calibrating probabilities on dedicated calibration holdout...")
             try:
-                min_class_count = int(y_train.value_counts().min()) if hasattr(y_train, 'value_counts') else int(np.bincount(y_train).min())
+                cal_min_class = int(y_cal.value_counts().min()) if hasattr(y_cal, 'value_counts') else int(np.bincount(y_cal).min())
                 
                 # PRODUCTION GUARD: If dataset is highly imbalanced or small (minority class < 30 cases),
-                # calibration curves will heavily regularize and squash all probabilities towards the mean (e.g. [0.03, 0.06]),
+                # calibration curves will heavily regularize and squash all probabilities towards the mean,
                 # destroying absolute risk differences and breaking high risk threshold segmentation.
-                # In these cases, the raw ensemble predictions are much more discriminative and robust.
-                if min_class_count < 30:
-                    logger.info(f"⚠️ Highly imbalanced or small dataset (minority class count = {min_class_count} < 30). Skipping calibration to prevent probability squashing.")
+                if cal_min_class < 30:
+                    logger.info(f"⚠️ Highly imbalanced or small calibration set (minority class count = {cal_min_class} < 30). Skipping calibration to prevent probability squashing.")
                     calibrated = best_raw
                 else:
-                    method = 'isotonic' if len(X_train) >= 1000 else 'sigmoid'
-                    # Use cv='prefit' on the held-out validation split to calibrate, which is cleaner
-                    # and keeps the base model fitted on the full X_train instead of sub-folds.
-                    if y_test.nunique() >= 2:
-                        logger.info(f"Calibrating fitted model on held-out validation split (N={len(X_test)}) using '{method}' cv='prefit'")
+                    method = 'isotonic' if len(X_cal) >= 500 else 'sigmoid'
+                    if y_cal.nunique() >= 2:
+                        logger.info(f"Calibrating fitted model on dedicated calibration split (N={len(X_cal)}) using '{method}' cv='prefit'")
                         calibrated = CalibratedClassifierCV(best_raw, cv='prefit', method=method)
-                        calibrated.fit(X_test, y_test)
+                        calibrated.fit(X_cal, y_cal)
                     else:
-                        cal_cv = max(2, min(3, min_class_count))
-                        logger.info(f"Calibrating via cross-validation (cv={cal_cv}) using '{method}'")
-                        calibrated = CalibratedClassifierCV(best_raw, cv=cal_cv, method=method)
-                        calibrated.fit(X_train, y_train)
-                logger.info("✅ Calibration pipeline complete.")
+                        logger.info("⚠️ Calibration split has single class. Skipping calibration.")
+                        calibrated = best_raw
+                logger.info("✅ Calibration pipeline complete (test set untouched).")
             except Exception as e:
                 logger.warning(f"Calibration failed: {e}. Using raw model.")
                 calibrated = best_raw
@@ -805,6 +832,8 @@ class AnalyticsEngine:
         else:
             # Cache path: best_model is a pre-verified fitted model from load_latest_model()
             logger.info("✨ Using pre-trained model from persistent cache.")
+            if self.best_model is None:
+                raise ValueError("Model is not initialized/fitted.")
             check_is_fitted(self.best_model)  # hard guard — raises NotFittedError if stale
             try:
                 y_pred_proba = self.best_model.predict_proba(X_test)[:, 1]
@@ -817,6 +846,8 @@ class AnalyticsEngine:
 
         # 5. Threshold Optimization (Move away from naive 0.5 to maximize business utility)
         with self.model_lock:
+            if self.best_model is None:
+                raise ValueError("Model is not initialized/fitted.")
             check_is_fitted(self.best_model)
             raw_probs = self.best_model.predict_proba(X_test)
             assert len(raw_probs) == len(X_test), "Shape mismatch between prediction arrays and inputs"
@@ -873,16 +904,18 @@ class AnalyticsEngine:
             if cv_n >= 2:
                 cv = StratifiedKFold(n_splits=cv_n, shuffle=True, random_state=42)
                 # Use self.best_model instead of self.model to ensure we report CV for the chosen algorithm
-                # Note: We use the raw model for CV as the calibrated wrapper might be too slow here
-                cv_scores = cross_val_score(self._raw_model, X_train_full, y_train_full, cv=cv, scoring='roc_auc')
-                cv_auc_mean = float(cv_scores.mean())
-                cv_auc_std = float(cv_scores.std())
+                if self._raw_model is None:
+                    cv_auc_mean, cv_auc_std = 0.0, 0.0
+                else:
+                    cv_scores = cross_val_score(self._raw_model, X_train_full, y_train_full, cv=cv, scoring='roc_auc')
+                    cv_auc_mean = float(cv_scores.mean())
+                    cv_auc_std = float(cv_scores.std())
             else:
                 cv_auc_mean, cv_auc_std = 0.0, 0.0
 
         try:
             auc_val = roc_auc_score(y_test, y_pred_proba)
-        except:
+        except Exception:
             auc_val = 0.0
 
         # Gini Coefficient
@@ -893,8 +926,8 @@ class AnalyticsEngine:
             'gini': float(gini),
             'cv_auc_mean': cv_auc_mean,
             'cv_auc_std': cv_auc_std,
-            'test_size': int(len(X_test)),
-            'train_size': int(len(X_train)),
+            'test_size': len(X_test),
+            'train_size': len(X_train),
             'primary_model': model_name,
             'optimal_threshold': best_threshold,
             'threshold_strategy': 'balanced_fp_fn',
@@ -926,7 +959,7 @@ class AnalyticsEngine:
                     'specificity': round(tn / actual_neg * 100, 1)
                 }
                 metrics['accuracy'] = round((tp + tn) / max(total_samples, 1), 4)
-                metrics['f1'] = round(f1_score(y_test, y_pred, zero_division=0), 4)
+                metrics['f1'] = round(float(f1_score(y_test, y_pred, zero_division=0)), 4)
         except Exception as e:
             logger.error(f"Confusion matrix error: {e}")
 
@@ -972,6 +1005,8 @@ class AnalyticsEngine:
 
         # Final safety guard before predict — catches any remaining stale state
         with self.model_lock:
+            if self.best_model is None:
+                raise ValueError("Model is not initialized/fitted.")
             check_is_fitted(self.best_model)
             logger.info(f"🔍 Predicting churn for {len(current_features)} users using '{model_name}'...")
             raw_probs = self.best_model.predict_proba(current_features)
@@ -1113,7 +1148,7 @@ class AnalyticsEngine:
             # Find the corresponding fintech label
             display_name = sd['feature']
             for fd in fintech_drivers:
-                if fd['raw_feature'].lower() == sd['feature'].lower():
+                if str(fd['raw_feature']).lower() == str(sd['feature']).lower():
                     display_name = fd['feature']
                     break
             mapped_shap.append({
@@ -1159,8 +1194,12 @@ class AnalyticsEngine:
         # Cap at total monetary value to keep it defensible
         rfm_df['revenue_at_risk'] = rfm_df['revenue_at_risk'].clip(upper=rfm_df['monetary'].clip(lower=1))
 
-        # ── Outlier Guard & Priority Scoring ──
-        rfm_df['priority_score'] = (rfm_df['churn_probability'] * rfm_df['revenue_at_risk'] * 1.2).clip(0, 100)
+        # ── Percentile-Rank Priority Scoring (data-driven, no arbitrary multiplier) ──
+        # Raw priority is churn_probability × revenue_at_risk. We convert to a
+        # 0–100 percentile rank so the score reflects relative standing within
+        # the current dataset rather than depending on a hardcoded constant.
+        raw_priority = rfm_df['churn_probability'] * rfm_df['revenue_at_risk']
+        rfm_df['priority_score'] = raw_priority.rank(pct=True).mul(100).round(1)
 
         for col in ['revenue_at_risk', 'predicted_ltv']:
             if col in rfm_df.columns:
@@ -1637,7 +1676,7 @@ class AnalyticsEngine:
         return {
             'value': float(np.nan_to_num(round(recovery_value, 2))),
             'efficiency_pct': round(float(np.nan_to_num(recovery_efficiency * 100)), 1),
-            'critical_count': int(len(at_risk)),
+            'critical_count': len(at_risk),
             'addressable_count': int(addressable_mask.sum()),
             'is_adaptive': bool(max_prob < risk_threshold)
         }
@@ -1765,20 +1804,27 @@ class AnalyticsEngine:
         # Use exact feature names model expects
         sim_features = sim_data.reindex(columns=raw_features, fill_value=0).fillna(0)
         # Safety guard — prevents What-If from silently using a stale model
-        if not self._is_fitted(self.best_model):
+        if self.best_model is None or not self._is_fitted(self.best_model):
             return {'error': 'Model is not fitted yet. Please load or train a dataset first.'}
         sim_probs = self.best_model.predict_proba(sim_features)[:, 1]
         simulated_churn = float(sim_probs.mean())
         
-        # ── Business Logic Clamp ──
-        # If the intervention is logically "positive", it should not increase churn
+        # ── Honest Model Output (no heuristic override) ──
+        # If the model predicts no effect or a counter-intuitive effect for a
+        # "positive" intervention, we report that honestly instead of fabricating
+        # a churn reduction. The UI will show a transparency note explaining why.
+        model_limitation_note = None
         is_positive_intervention = (
             (delta_pct > 0 and feature_key in ['monetary', 'frequency', 'section_count']) or 
             (delta_pct < 0 and feature_key in ['recency', 'failure_rate'])
         )
         if is_positive_intervention and simulated_churn >= original_churn:
-            # Force a slight improvement if the model gets confused by extrapolation or remains flat
-            simulated_churn = original_churn * (1 - (abs(delta_pct)/100.0) * 0.1)
+            model_limitation_note = (
+                f"The ML model shows no predicted churn reduction for this intervention. "
+                f"This can happen when the feature has low model importance "
+                f"(the model relies more on other features), or when the change magnitude "
+                f"is too small to cross a decision boundary in the tree-based model."
+            )
         
 
         # ── Business-Grade Revenue Impact ──
@@ -1841,17 +1887,18 @@ class AnalyticsEngine:
                 'section_count': 'Tax Section Diversity',
             }.get(feature_key, feature_key),
             'delta_pct': delta_pct,
-            'original_churn': float(original_churn),
-            'simulated_churn': float(simulated_churn),
-            'churn_reduction_pct': float(reduction_pct),
-            'absolute_reduction': float(reduction * 100),
-            'revenue_protected': float(revenue_saved),
-            'revenue_saved': float(revenue_saved),
-            'ltv_saved': float(ltv_saved),
+            'original_churn': original_churn,
+            'simulated_churn': simulated_churn,
+            'churn_reduction_pct': reduction_pct,
+            'absolute_reduction': reduction * 100,
+            'revenue_protected': revenue_saved,
+            'revenue_saved': revenue_saved,
+            'ltv_saved': ltv_saved,
             'recommendation': rec,
             'model_evidence_pct': evidence_pct,
             'feature_importance': evidence_pct / 100.0,
             'users_affected': int(seg_mask.sum()),
+            'model_limitation_note': model_limitation_note,
         }
 
     # ────────────────────────────────────────────
@@ -1907,6 +1954,7 @@ class AnalyticsEngine:
     def _save_model_version(self, metrics, model_id=None):
         """Save trained model with centralized, clean enterprise names."""
         try:
+            clean_id = ""
             if model_id:
                 clean_id = str(model_id).lower()
                 if "tax" in clean_id:
@@ -2359,7 +2407,7 @@ class AnalyticsEngine:
         if 'domain' in rfm_df.columns:
             domain = str(rfm_df['domain'].iloc[0]).lower()
         elif hasattr(self, '_domain') and self._domain:
-            domain = str(self._domain).lower()
+            domain = self._domain.lower()
 
         if len(high_churn) == 0 or len(low_churn) == 0:
             avg_churn = rfm_df['churn_probability'].mean()
@@ -2376,7 +2424,7 @@ class AnalyticsEngine:
 
         # Helper for Model-Grounded Counterfactual Lift
         def calc_lift(col_match, target_val, is_reduction=False):
-            if not self._is_fitted(self.best_model) or not getattr(self, '_feature_columns', None):
+            if self.best_model is None or not self._is_fitted(self.best_model) or not getattr(self, '_feature_columns', None):
                 return 5.0
             if col_match not in self._feature_columns:
                 return 5.0
@@ -2438,7 +2486,7 @@ class AnalyticsEngine:
                 
                 # Target: Incremental reduction (e.g., 20% better than current churner avg)
                 # Not a jump to the perfect customer profile.
-                target_rec = int(max(7, rec_churn * 0.8)) 
+                target_rec = int(max(7.0, float(rec_churn) * 0.8)) 
                 
                 # Model-grounded lift simulation
                 lift = calc_lift(col_match, target_rec, is_reduction=True) if col_match else 5.0
@@ -2727,7 +2775,7 @@ class AnalyticsEngine:
             sim_features = sim_df[feature_columns].fillna(0)
             
             with self.model_lock:
-                if self._is_fitted(self.best_model):
+                if self.best_model is not None and self._is_fitted(self.best_model):
                     opt_raw_probs = self.best_model.predict_proba(sim_features)
                     opt_probs = np.array(opt_raw_probs)[:, 1]
                 else:
@@ -2775,6 +2823,7 @@ class AnalyticsEngine:
         scores = []
         
         # 1. Recency Variance (Better if users are spread across time)
+        days = 0
         if 'timestamp' in df.columns:
             days = (df['timestamp'].max() - df['timestamp'].min()).days
             scores.append(min(100, days / 3.65)) # 1 year = 100

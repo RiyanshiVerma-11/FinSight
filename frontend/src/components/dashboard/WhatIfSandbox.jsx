@@ -829,6 +829,34 @@ export default function WhatIfSandbox({ segments, segChurn, domain, onSimulation
               </div>
             </div>
 
+            {/* Model Transparency Note — shown when model shows no effect for a positive intervention */}
+            {result.model_limitation_note && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                style={{
+                  marginTop: '0.75rem',
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '0.5rem',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  alignItems: 'flex-start'
+                }}
+              >
+                <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
+                    Model Transparency Note
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    {result.model_limitation_note}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
             {/* A/B Test Simulator */}
             <div style={{ marginTop: '1.25rem' }}>
               {!abTest ? (

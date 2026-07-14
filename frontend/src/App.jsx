@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDatasets, useAnalytics, useFileUpload, useLlmHypotheses } from './hooks/useFinSightQueries';
 import DashboardLayout from './components/layout/DashboardLayout';
+import LandingPage from './components/layout/LandingPage';
 
 function App() {
+  const [view, setView] = useState("landing");
   const [selectedDataset, setSelectedDataset] = useState("");
   const [uploadedData, setUploadedData] = useState(null);
   const queryClient = useQueryClient();
@@ -39,6 +41,7 @@ function App() {
       const responseData = await uploadFileMutation(file);
       setUploadedData(responseData);
       setSelectedDataset("");
+      setView("dashboard");
     } catch (err) {
       alert(err.response?.data?.detail || "Error processing file.");
     }
@@ -49,7 +52,12 @@ function App() {
     setUploadedData(null);
     // Invalidate the cache so React Query always hits the server fresh
     queryClient.invalidateQueries({ queryKey: ['analytics', ''] });
+    setView("dashboard");
   };
+
+  if (view === "landing") {
+    return <LandingPage onLaunchDashboard={() => setView("dashboard")} />;
+  }
 
   return (
     <DashboardLayout
@@ -65,6 +73,7 @@ function App() {
       llmHypotheses={llmHypotheses}
       fetchLlmHypothesesMutation={fetchLlmHypothesesMutation}
       llmLoading={llmLoading}
+      onShowLanding={() => setView("landing")}
     />
   );
 }

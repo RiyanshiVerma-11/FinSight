@@ -39,7 +39,7 @@ MIN_USERS_TO_KEEP = 100
 
 _active_key_var: ContextVar[str | None] = ContextVar("active_key", default=None)
 
-def get_active_key() -> str:
+def get_active_key() -> str | None:
     return _active_key_var.get()
 
 def set_active_key(key: str) -> None:

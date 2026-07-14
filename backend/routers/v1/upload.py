@@ -18,12 +18,13 @@ _ml_executor = ThreadPoolExecutor(max_workers=4)
 
 @router.post("/analyze")
 async def analyze_data(file: UploadFile = File(...)):
-    if not file.filename.endswith(('.csv', '.xlsx')):
+    filename = file.filename or ""
+    if not filename.endswith(('.csv', '.xlsx')):
         raise HTTPException(status_code=400, detail="Only CSV or XLSX files are supported.")
     
     contents = await file.read()
     df = None
-    if file.filename.endswith('.csv'):
+    if filename.endswith('.csv'):
         for enc in ['utf-8-sig', 'utf-8', 'ISO-8859-1']:
             try:
                 df = pd.read_csv(io.BytesIO(contents), encoding=enc, sep=None, engine='python')

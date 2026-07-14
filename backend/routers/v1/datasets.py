@@ -43,7 +43,7 @@ def _fuzzy_match(target: str, candidates: list, threshold: float = 0.8) -> str |
     return best_match if best_score >= threshold else None
 
 def _detect_domain(df: pd.DataFrame) -> str:
-    cols_raw = [str(c).lower().strip() for c in df.columns]
+    cols_raw = [f"{c}".lower().strip() for c in df.columns]
     cols_norm = [c.replace('_', '').replace(' ', '') for c in cols_raw]
     all_sigs = set(cols_norm) | set(cols_raw)
     
@@ -96,7 +96,7 @@ def _prepare_data_df(df: pd.DataFrame) -> pd.DataFrame:
         return _prepare_generic_df(df)
 
 def normalize_col(c: str) -> str:
-    return str(c).lower().strip().replace(' ', '').replace('_', '').replace('-', '')
+    return c.lower().strip().replace(' ', '').replace('_', '').replace('-', '')
 
 # ──────────────────────────────────────
 #  Domain-Specific Mapping Dictionaries
@@ -204,8 +204,28 @@ def _map_domain_columns(df: pd.DataFrame, mapping_dict: dict) -> pd.DataFrame:
                     break
         if not matched:
             for cand in candidates:
-                match = _fuzzy_match(cand, [c for c in current_cols if c not in used_raw_cols], threshold=0.8)
+                available_cols = [c for c in current_cols if c not in used_raw_cols]
+                match = _fuzzy_match(cand, available_cols, threshold=0.9)
                 if match:
+                    # Conflict detection: check if another available column also
+                    # fuzzy-matches this candidate with a similar score. If so,
+                    # the match is ambiguous and we skip it to prevent wrong mapping.
+                    cand_norm = cand.lower().replace(' ', '').replace('_', '')
+                    scores = []
+                    for ac in available_cols:
+                        ac_norm = ac.lower().replace(' ', '').replace('_', '')
+                        s = difflib.SequenceMatcher(None, cand_norm, ac_norm).ratio()
+                        scores.append((ac, s))
+                    scores.sort(key=lambda x: x[1], reverse=True)
+                    # If top-2 scores are within 0.05 of each other, it's ambiguous
+                    if len(scores) >= 2 and (scores[0][1] - scores[1][1]) < 0.05:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            f"Fuzzy match conflict for '{cand}' → '{target}': "
+                            f"'{scores[0][0]}' ({scores[0][1]:.2f}) vs '{scores[1][0]}' ({scores[1][1]:.2f}). "
+                            f"Skipping ambiguous match."
+                        )
+                        continue  # Skip this ambiguous mapping
                     found_mapping[match] = target
                     used_raw_cols.add(match)
                     break
@@ -304,7 +324,7 @@ def _clean_and_post_process_df(df: pd.DataFrame, domain: str) -> pd.DataFrame:
         
         expanded_rows = []
         for idx, row in df.iterrows():
-            n_txns = int(freq_vals.get(idx, 1))
+            n_txns = freq_vals.get(idx, 1)
             tenure_days = max(int(actual_months.get(idx, 6) * 30), 30)
             for t in range(n_txns):
                 new_row = row.copy()
@@ -537,12 +557,12 @@ def _process_dataframe(df: pd.DataFrame, cache_key: str = "_default") -> dict:
             #   High Risk    = above 1.5× baseline (top ~25% of risky users)
             #   Critical     = above 2.0× baseline (top ~10%)
             # When baseline > 35% we fall back to raw optimal_threshold.
-            "total_high_risk_users": int(len(final_df[final_df['churn_probability'] >= float(final_df['churn_probability'].quantile(0.75))])),
-            "onboarding_risk_users": int(len(final_df[
+            "total_high_risk_users": len(final_df[final_df['churn_probability'] >= float(final_df['churn_probability'].quantile(0.75))]),
+            "onboarding_risk_users": len(final_df[
                 (final_df['lifecycle'] == 'New') &
                 (final_df['churn_probability'] >= float(final_df['churn_probability'].quantile(0.75)))
-            ])),
-            "critical_threshold_users": int(len(final_df[final_df['churn_probability'] >= float(final_df['churn_probability'].quantile(0.90))])),
+            ]),
+            "critical_threshold_users": len(final_df[final_df['churn_probability'] >= float(final_df['churn_probability'].quantile(0.90))]),
             **metrics,
         },
         "shap_data": shap_data,
@@ -583,7 +603,7 @@ def _build_synthetic_demo_df(n_users: int = 500, seed: int = 42) -> pd.DataFrame
         n_tx = int(rng.integers(10, 40)) if is_loyal else int(rng.integers(2, 8))
         for _ in range(n_tx):
             days_ago = int(rng.integers(0, 90)) if is_loyal else int(rng.integers(90, 365))
-            amount = round(float(rng.uniform(10, 5000)), 2)
+            amount = round(rng.uniform(10, 5000), 2)
             rows.append({
                 "user_id": str(uid),
                 "timestamp": (base + pd.Timedelta(days=days_ago)).strftime("%Y-%m-%d"),

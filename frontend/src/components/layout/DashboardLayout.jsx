@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Users, Activity, ShieldAlert, RefreshCw,
   Database, Download, Upload, FlaskConical,
-  Brain, Zap, FileText, LayoutDashboard, Award, AlertTriangle
+  Brain, Zap, FileText, LayoutDashboard, Award, AlertTriangle, Info
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -23,7 +23,8 @@ import { Section } from '../ui/DashboardComponents';
 export default function DashboardLayout({
   data, loading, error, datasets, selectedDataset, onDatasetChange,
   onFileUpload, uploading, fetchDemoData,
-  llmHypotheses, fetchLlmHypothesesMutation, llmLoading
+  llmHypotheses, fetchLlmHypothesesMutation, llmLoading,
+  onShowLanding
 }) {
   const [shapUser, setShapUser] = useState(null);
   const [activeTab, setActiveTab] = useState('executive');
@@ -120,12 +121,15 @@ export default function DashboardLayout({
       <ModelIntelligenceGuide isOpen={showGuide} onClose={() => setShowGuide(false)} />
 
       <header className="header">
-        <div className="logo">
+        <div className="logo" style={{ cursor: 'pointer' }} onClick={onShowLanding}>
           <Activity size={28} strokeWidth={2.5} />
           <span>Fin<span className="logo-gradient">Sight</span></span>
           <span className="version-badge">v3.0</span>
         </div>
         <div className="controls-row tour-dataset">
+          <button className="btn-outline" onClick={onShowLanding}>
+            <Info size={17} /> About Project
+          </button>
           <select className="select-dataset" value={selectedDataset} onChange={(e) => onDatasetChange(e.target.value)}>
             <option value="">Select Local Dataset</option>
             {datasets?.map(ds => <option key={ds} value={ds}>{ds}</option>)}
