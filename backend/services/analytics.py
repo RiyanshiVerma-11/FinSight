@@ -1855,12 +1855,13 @@ class AnalyticsEngine:
         reduction_pct = (reduction / max(original_churn, 0.001)) * 100
         
         direction = 'increase' if delta_pct > 0 else 'decrease'
+        display_feat_name = feature if feature else feature_key
         if reduction > 0.0001:
-            rec = f"A {abs(delta_pct):.0f}% {direction} in {feature_key} for '{segment}' could reduce churn by {reduction_pct:.1f}%, protecting ₹{revenue_saved:,.0f} in revenue."
+            rec = f"A {abs(delta_pct):.0f}% {direction} in {display_feat_name} for '{segment}' could reduce churn by {reduction_pct:.1f}%, protecting ₹{revenue_saved:,.0f} in revenue."
         elif reduction < -0.0001:
-            rec = f"A {abs(delta_pct):.0f}% {direction} in {feature_key} for '{segment}' may increase churn by {abs(reduction_pct):.1f}%. Not recommended."
+            rec = f"A {abs(delta_pct):.0f}% {direction} in {display_feat_name} for '{segment}' may increase churn by {abs(reduction_pct):.1f}%. Not recommended."
         else:
-            rec = f"A {abs(delta_pct):.0f}% {direction} in {feature_key} for '{segment}' has no predicted effect on churn. Consider other interventions."
+            rec = f"A {abs(delta_pct):.0f}% {direction} in {display_feat_name} for '{segment}' has no predicted effect on churn. Consider other interventions."
 
         # Evidence for transparency: How important is this feature to the model?
         importances = self.get_feature_importances()

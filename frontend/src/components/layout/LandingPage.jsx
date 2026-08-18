@@ -4,22 +4,38 @@ import {
   ShieldAlert, Activity, Cpu, Brain,
   Zap, Database, CheckCircle2, ArrowRight,
   TrendingUp, BarChart3, Users, PlayCircle,
-  FileSpreadsheet, BookOpen, Percent, Calculator, Info
+  FileSpreadsheet, BookOpen, Percent, Calculator, Info,
+  ChevronDown, ChevronUp, Sparkles, DollarSign, IndianRupee, Target,
+  Layers, ShieldCheck, HelpCircle, Server, RefreshCw
 } from 'lucide-react';
 
 export default function LandingPage({ onLaunchDashboard }) {
   const [activeInfoTab, setActiveInfoTab] = useState('data'); // 'data' | 'math'
+  const [activeFaq, setActiveFaq] = useState(null);
+
+  // Interactive ROI Calculator State
+  const [mau, setMau] = useState(15000);
+  const [arpu, setArpu] = useState(60);
+  const [churnRate, setChurnRate] = useState(3.0);
+  const [reductionRate, setReductionRate] = useState(30);
+
+  // Calculations for ROI Calculator
+  const monthlyChurnedUsers = Math.round(mau * (churnRate / 100));
+  const annualRevenueAtRisk = monthlyChurnedUsers * 12 * arpu;
+  const annualRevenueSaved = annualRevenueAtRisk * (reductionRate / 100);
+  const projectedRoiMultiple = (annualRevenueSaved / 24000).toFixed(1);
+  const highRiskCohort = Math.round(monthlyChurnedUsers * 1.35);
 
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      transition: { staggerChildren: 0.12, delayChildren: 0.1 }
+      transition: { staggerChildren: 0.1, delayChildren: 0.05 }
     }
   };
 
   const itemVariants = {
-    hidden: { y: 25, opacity: 0 },
+    hidden: { y: 20, opacity: 0 },
     visible: {
       y: 0,
       opacity: 1,
@@ -35,7 +51,8 @@ export default function LandingPage({ onLaunchDashboard }) {
       description: 'Transaction-level logs capturing peer-to-peer or peer-to-merchant payments.',
       required: ['payer_user_id (or sender_vpa / upi_id)', 'timestamp (date/time)', 'amount'],
       optional: ['description (merchant / payee)', 'status (response code / result)'],
-      sample: 'payee_vpa_123, 2026-07-14 12:30:15, 500.00, SUCCESS'
+      sample: 'payee_vpa_123, 2026-07-14 12:30:15, ₹500.00, SUCCESS',
+      derivedFeatures: ['ipi_consistency', 'recency_dev', 'upi_failure_rate', 'velocity_7d']
     },
     {
       id: 'banking',
@@ -44,7 +61,8 @@ export default function LandingPage({ onLaunchDashboard }) {
       description: 'Summary files documenting customer account balances, credit profiles, and status.',
       required: ['customer_id', 'balance (monetary)', 'num_of_products (frequency)', 'tenure_months'],
       optional: ['credit_score', 'estimated_salary', 'is_active_member', 'exited (churn label)'],
-      sample: 'cust_8832, 12500.45, 2, 24, 720, 85000.00, 1, 0'
+      sample: 'cust_8832, ₹12,500.45, 2, 24, 720, ₹85,000.00, 1, 0',
+      derivedFeatures: ['balance_tenure_ratio', 'product_utilization', 'credit_risk_tier']
     },
     {
       id: 'tax',
@@ -53,7 +71,8 @@ export default function LandingPage({ onLaunchDashboard }) {
       description: 'Form 26AS style credits, TDS details, or recurrent taxable income entries.',
       required: ['pan (user_id)', 'timestamp (date of credit)', 'gross_amount_inr (amount)'],
       optional: ['income_head (description)', 'deductor_tan', 'section'],
-      sample: 'ABCDE1234F, 2026-06-30, 75000.00, Salary - Section 192'
+      sample: 'ABCDE1234F, 2026-06-30, ₹75,000.00, Salary - Section 192',
+      derivedFeatures: ['credit_gap_days', 'annual_headroom', 'tds_concentration']
     },
     {
       id: 'retail',
@@ -62,7 +81,8 @@ export default function LandingPage({ onLaunchDashboard }) {
       description: 'Classic transactional basket records including quantities and unit pricing.',
       required: ['customer_id', 'timestamp (Invoice Date)', 'amount (or unit_price + quantity)'],
       optional: ['quantity', 'unit_price', 'description (product name)'],
-      sample: 'user_403, 2026-07-10 09:45:00, 29.99, 1, 29.99, Wireless Mouse'
+      sample: 'user_403, 2026-07-10 09:45:00, ₹2,999.00, 1, ₹2,999.00, Wireless Mouse',
+      derivedFeatures: ['basket_avg_value', 'repurchase_interval', 'category_breadth']
     },
     {
       id: 'generic',
@@ -71,7 +91,8 @@ export default function LandingPage({ onLaunchDashboard }) {
       description: 'Any CSV/Excel mapping user identifier columns, time series fields, and numeric values.',
       required: ['user_id (or customer_id / account)', 'timestamp (date)', 'amount (value / spend)'],
       optional: ['any descriptive feature column'],
-      sample: 'acc_8801, 2026-07-12, 100.00, Custom Label'
+      sample: 'acc_8801, 2026-07-12, ₹1,000.00, Custom Label',
+      derivedFeatures: ['activity_velocity', 'recency_decay', 'spending_trend']
     }
   ];
 
@@ -132,53 +153,120 @@ export default function LandingPage({ onLaunchDashboard }) {
     }
   ];
 
+  const faqs = [
+    {
+      q: 'How does FinSight import data without rigid, fixed column schemas?',
+      a: 'FinSight features a fuzzy schema-matching engine that evaluates column names using normalized string distance and semantic header detection. Whether your file labels user IDs as "payer_vpa", "customer_id", or "account_number", FinSight auto-maps them to standardized analytics attributes instantly.'
+    },
+    {
+      q: 'Why does FinSight emphasize Isotonic Probability Calibration?',
+      a: 'Standard ML algorithms (like raw XGBoost or Random Forest decision trees) output raw score rankings, not true calibrated probabilities. FinSight passes prediction scores through isotonic regression on a dedicated calibration split, ensuring an 80% risk prediction accurately translates to an 80% real-world likelihood of churn.'
+    },
+    {
+      q: 'How does the SHAP (SHapley Additive exPlanations) explainability layer work?',
+      a: 'FinSight calculates exact Shapley values for every user and feature. Instead of giving a mysterious risk score, FinSight explicitly isolates feature impact — showing, for example, that +45% of customer #8832\'s churn risk is driven by a 14-day recency spike, while +25% comes from failing UPI transaction codes.'
+    },
+    {
+      q: 'How is customer transaction data kept secure and private?',
+      a: 'All data processing and ML pipeline execution run strictly within your configured environment or backend session. Raw customer identifiers (PII) can be hashed or anonymized prior to upload without impacting mathematical velocity calculations.'
+    },
+    {
+      q: 'What role does Groq & Llama 3.3 play in the FinSight platform?',
+      a: 'While XGBoost and SHAP compute precise mathematical weights, Groq-accelerated Llama 3.3 synthesizes these metrics into executive-ready strategic hypotheses and tailored intervention plans for product managers.'
+    }
+  ];
+
+  const scrollToSection = (id) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   return (
-    <div className="landing-page-container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '2.5rem 1.25rem' }}>
+    <div className="landing-page-wrapper" style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.25rem 4rem' }}>
       
-      {/* Hero Section */}
+      {/* STICKY GLASSMORPHIC NAVBAR */}
+      <header className="landing-navbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '36px', height: '36px', borderRadius: '0.75rem',
+            background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+          }}>
+            <Brain size={22} />
+          </div>
+          <div>
+            <span style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Fin<span className="logo-gradient">Sight</span>
+            </span>
+            <span style={{
+              fontSize: '0.68rem', fontWeight: 800, background: 'rgba(99, 102, 241, 0.1)',
+              color: 'var(--primary)', padding: '0.15rem 0.45rem', borderRadius: '1rem', marginLeft: '0.4rem'
+            }}>
+              v2.4 Enterprise
+            </span>
+          </div>
+        </div>
+
+        <ul className="landing-navbar-links">
+          <li><span onClick={() => scrollToSection('features')} className="landing-nav-link">Features</span></li>
+          <li><span onClick={() => scrollToSection('roi-calculator')} className="landing-nav-link">ROI Calculator</span></li>
+          <li><span onClick={() => scrollToSection('schemas')} className="landing-nav-link">Data Schemas</span></li>
+          <li><span onClick={() => scrollToSection('math-engine')} className="landing-nav-link">Math Engine</span></li>
+          <li><span onClick={() => scrollToSection('faq')} className="landing-nav-link">FAQ</span></li>
+        </ul>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button 
+            className="btn-outline" 
+            onClick={onLaunchDashboard}
+            style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+          >
+            Demo Mode
+          </button>
+          <button 
+            className="btn-primary" 
+            onClick={onLaunchDashboard}
+            style={{ fontSize: '0.85rem', padding: '0.5rem 1.25rem' }}
+          >
+            Launch Platform <ArrowRight size={16} />
+          </button>
+        </div>
+      </header>
+
+      {/* HERO SECTION */}
       <motion.div 
         variants={containerVariants}
         initial="hidden"
         animate="visible"
         style={{
           textAlign: 'center',
-          padding: '5rem 2rem',
+          padding: '4.5rem 1.5rem 3.5rem',
           borderRadius: 'var(--radius-2xl)',
-          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(236, 72, 153, 0.04) 100%)',
+          background: 'linear-gradient(180deg, rgba(99, 102, 241, 0.05) 0%, rgba(236, 72, 153, 0.02) 100%)',
           border: '1px solid rgba(226, 232, 240, 0.9)',
-          boxShadow: 'var(--shadow-lg)',
-          marginBottom: '4rem',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.03)',
+          marginBottom: '5rem',
           position: 'relative',
           overflow: 'hidden'
         }}
       >
         <div style={{
-          position: 'absolute',
-          top: '-15%',
-          left: '-15%',
-          width: '350px',
-          height: '350px',
-          background: 'radial-gradient(circle, rgba(99, 102, 241, 0.16) 0%, transparent 70%)',
-          pointerEvents: 'none'
-        }} />
-        <div style={{
-          position: 'absolute',
-          bottom: '-15%',
-          right: '-15%',
-          width: '400px',
-          height: '400px',
-          background: 'radial-gradient(circle, rgba(236, 72, 153, 0.12) 0%, transparent 70%)',
-          pointerEvents: 'none'
+          position: 'absolute', top: '-10%', left: '20%', width: '450px', height: '450px',
+          background: 'radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%)',
+          pointerEvents: 'none', filter: 'blur(40px)'
         }} />
 
-        <motion.div variants={itemVariants} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', padding: '0.5rem 1.25rem', borderRadius: '2rem', fontSize: '0.85rem', fontWeight: 700, marginBottom: '1.75rem' }}>
-          <Activity size={16} /> Enterprise Retention Intelligence
+        <motion.div variants={itemVariants} className="hero-glow-badge">
+          <Sparkles size={16} /> ✦ Next-Gen Retention & Revenue Protection for FinTech ✦
         </motion.div>
 
         <motion.h1 
-          variants={itemVariants} 
+          variants={itemVariants}
           style={{ 
-            fontSize: '3.75rem', 
+            fontSize: '3.6rem', 
             fontWeight: 900, 
             lineHeight: 1.1, 
             letterSpacing: '-0.03em', 
@@ -186,9 +274,9 @@ export default function LandingPage({ onLaunchDashboard }) {
             color: 'var(--text-primary)'
           }}
         >
-          Stop Churn. Protect Revenue.<br />
-          <span style={{ background: 'linear-gradient(135deg, var(--primary), var(--secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', BackgroundClip: 'text' }}>
-            Predictive Intelligence for Fintech.
+          Predict Customer Churn.<br />
+          <span className="hero-gradient-title">
+            Protect High-Value Revenue. Auditable by Design.
           </span>
         </motion.h1>
 
@@ -197,85 +285,282 @@ export default function LandingPage({ onLaunchDashboard }) {
           style={{ 
             fontSize: '1.25rem', 
             color: 'var(--text-secondary)', 
-            maxWidth: '750px', 
-            margin: '0 auto 2.75rem',
+            maxWidth: '780px', 
+            margin: '0 auto 2.5rem',
             lineHeight: 1.6
           }}
         >
-          Transforming transactional logs into actionable retention strategies. Spot behavioral decay before customers exit, simulate high-impact interventions, and verify with enterprise-grade explainability.
+          Transform raw transaction logs into calibrated churn probabilities, defensible Revenue at Risk (RAR) estimates, and SHAP-explained strategic interventions powered by XGBoost & Groq Llama 3.3.
         </motion.p>
 
-        <motion.div variants={itemVariants} style={{ display: 'flex', justifyContent: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+        <motion.div variants={itemVariants} style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '3.5rem' }}>
           <button 
             className="btn-primary" 
             onClick={onLaunchDashboard}
             style={{ 
-              padding: '1rem 2.25rem', 
+              padding: '0.9rem 2.25rem', 
               fontSize: '1rem', 
               borderRadius: 'var(--radius-lg)', 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.6rem',
-              boxShadow: '0 10px 25px rgba(99, 102, 241, 0.25)',
-              cursor: 'pointer',
-              border: 'none',
-              color: '#fff',
-              fontWeight: 700
+              fontWeight: 700,
+              boxShadow: '0 10px 25px rgba(99, 102, 241, 0.3)'
             }}
           >
             <PlayCircle size={20} /> Launch FinSight Platform <ArrowRight size={18} />
           </button>
+          <button 
+            className="btn-outline"
+            onClick={() => scrollToSection('roi-calculator')}
+            style={{ 
+              padding: '0.9rem 1.75rem', 
+              fontSize: '1rem', 
+              borderRadius: 'var(--radius-lg)',
+              fontWeight: 600 
+            }}
+          >
+            <Calculator size={18} /> Calculate ROI & Impact
+          </button>
+        </motion.div>
+
+        {/* HERO LIVE DASHBOARD MOCKUP PREVIEW */}
+        <motion.div variants={itemVariants} style={{ maxWidth: '980px', margin: '0 auto', textAlign: 'left' }}>
+          <div className="mock-dashboard-card">
+            <div className="mock-dashboard-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div className="window-dots">
+                  <div className="window-dot" style={{ background: '#ef4444' }} />
+                  <div className="window-dot" style={{ background: '#f59e0b' }} />
+                  <div className="window-dot" style={{ background: '#10b981' }} />
+                </div>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontFamily: 'monospace' }}>
+                  finsight-analytics-engine // live_portfolio_v2.4
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.15)', padding: '0.2rem 0.6rem', borderRadius: '1rem', color: '#10b981', fontSize: '0.75rem', fontWeight: 700 }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                ENGINE ACTIVE · LATENCY 24ms
+              </div>
+            </div>
+
+            <div style={{ padding: '1.75rem' }}>
+              {/* Mock KPI Bar */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{ background: 'rgba(255, 255, 255, 0.04)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Total Revenue at Risk</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f43f5e', marginTop: '0.25rem' }}>₹14,20,500</div>
+                  <div style={{ fontSize: '0.7rem', color: '#10b981', marginTop: '0.2rem' }}>↓ 14.2% after intervention</div>
+                </div>
+                <div style={{ background: 'rgba(255, 255, 255, 0.04)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Calibration Accuracy</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#6366f1', marginTop: '0.25rem' }}>94.8% AUC</div>
+                  <div style={{ fontSize: '0.7rem', color: '#818cf8', marginTop: '0.2rem' }}>Isotonic Scaled</div>
+                </div>
+                <div style={{ background: 'rgba(255, 255, 255, 0.04)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Bonferroni KS Drift</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#10b981', marginTop: '0.25rem' }}>Healthy (0.012)</div>
+                  <div style={{ fontSize: '0.7rem', color: '#34d399', marginTop: '0.2rem' }}>Zero feature drift detected</div>
+                </div>
+                <div style={{ background: 'rgba(255, 255, 255, 0.04)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600 }}>Groq AI Strategic Engine</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ec4899', marginTop: '0.25rem' }}>Llama 3.3 70B</div>
+                  <div style={{ fontSize: '0.7rem', color: '#f472b6', marginTop: '0.2rem' }}>3 Hypotheses Formulated</div>
+                </div>
+              </div>
+
+              {/* Mock SHAP Visual Bar */}
+              <div style={{ background: 'rgba(0, 0, 0, 0.2)', padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <BarChart3 size={16} color="#818cf8" /> Top SHAP Churn Drivers (Portfolio Level)
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>TreeSHAP Explainer</span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '0.2rem' }}>
+                      <span>Recency Deviation (`recency_dev`)</span>
+                      <span style={{ color: '#f43f5e', fontWeight: 700 }}>+0.42 SHAP</span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: '85%', height: '100%', background: 'linear-gradient(90deg, #6366f1, #f43f5e)', borderRadius: '3px' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '0.2rem' }}>
+                      <span>IPI Consistency Score (`ipi_consistency`)</span>
+                      <span style={{ color: '#f43f5e', fontWeight: 700 }}>+0.28 SHAP</span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: '62%', height: '100%', background: 'linear-gradient(90deg, #6366f1, #ec4899)', borderRadius: '3px' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '0.2rem' }}>
+                      <span>Monetary Spend Velocity (`velocity_90d`)</span>
+                      <span style={{ color: '#38bdf8', fontWeight: 700 }}>-0.19 SHAP (Protective)</span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: '42%', height: '100%', background: '#38bdf8', borderRadius: '3px' }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </motion.div>
       </motion.div>
 
-      {/* CORE CONCEPT SECTION */}
-      <div style={{ marginBottom: '5rem' }}>
+      {/* CORE VALUE PROPOSITION GRID */}
+      <div id="features" style={{ marginBottom: '6rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '3.5rem' }}>
-          <h2 style={{ fontSize: '2.25rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
-            What exactly is FinSight?
+          <h2 style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
+            Built for Modern Fintech Revenue Teams
           </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
-            An intuitive dashboard built to tackle the Fintech "Revenue Leak" by closing the gap between raw numbers and product decisions.
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.15rem', maxWidth: '640px', margin: '0 auto' }}>
+            Closing the gap between raw transaction data and high-impact retention decisions.
           </p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '2rem', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '0.75rem', background: 'rgba(244, 63, 94, 0.1)', color: 'var(--accent-rose)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
-              <ShieldAlert size={24} />
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '2.25rem', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '1rem', background: 'rgba(244, 63, 94, 0.1)', color: 'var(--accent-rose)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
+              <ShieldAlert size={26} />
             </div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>Identifying Churn Risk Early</h3>
-            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.95rem' }}>
-              Instead of waiting for a customer to formally close their account, FinSight reads UPI, transaction, and wallet velocity logs to spot early indicators of fading loyalty.
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>Early Behavioral Decay Spotting</h3>
+            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.98rem' }}>
+              Detect subtle drops in purchase frequency, UPI payment failures, and recency gaps weeks before a user formally closes their account or stops transacting.
             </p>
           </div>
 
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '2rem', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
-              <TrendingUp size={24} />
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '2.25rem', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '1rem', background: 'rgba(245, 158, 11, 0.1)', color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
+              <TrendingUp size={26} />
             </div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>Calculating Revenue at Risk (RAR)</h3>
-            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.95rem' }}>
-              We don't treat all users the same. By cross-referencing churn probability with user transaction values, FinSight helps you target interventions where they protect the most revenue.
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>Defensible Revenue at Risk (RAR)</h3>
+            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.98rem' }}>
+              Quantify financial exposure accurately. By combining calibrated churn probability with run-rate spend velocity, FinSight tells finance leadership exactly how many rupees are on the line.
             </p>
           </div>
 
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '2rem', boxShadow: 'var(--shadow-sm)' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '0.75rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
-              <Zap size={24} />
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '2.25rem', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '1rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
+              <Zap size={26} />
             </div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>Simulating What-If Scenarios</h3>
-            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.95rem' }}>
-              Want to see the impact of reducing transaction failure rates by 10%? Our simulation engine calculates exact revenue savings, ROI, and segment responsiveness instantly.
+            <h3 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>Groq AI Strategic Interventions</h3>
+            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.98rem' }}>
+              Turn math into execution. Powered by Groq-accelerated Llama 3.3, FinSight synthesizes complex model weights into 3 actionable product hypotheses and targeted campaign workflows.
             </p>
           </div>
         </div>
       </div>
 
-      {/* DYNAMIC INTERACTIVE INFORMATION PANEL */}
-      <div style={{ marginBottom: '5rem', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)', boxShadow: 'var(--shadow-md)', overflow: 'hidden' }}>
+      {/* INTERACTIVE ROI & REVENUE PROTECTION CALCULATOR WIDGET */}
+      <div id="roi-calculator" style={{ marginBottom: '6rem', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)', padding: '3rem 2.5rem', boxShadow: 'var(--shadow-md)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent-emerald)', padding: '0.4rem 1rem', borderRadius: '2rem', fontSize: '0.85rem', fontWeight: 700, marginBottom: '1rem' }}>
+            <IndianRupee size={16} /> Interactive Business Impact Model
+          </div>
+          <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+            Estimate Your Revenue Retention Impact
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
+            Adjust your customer base and retention goals to see estimated annual revenue protected with FinSight.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '3rem', alignItems: 'center' }}>
+          {/* Sliders Side */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.95rem', fontWeight: 700 }}>
+                <span>Monthly Active Users (MAU):</span>
+                <span style={{ color: 'var(--primary)', fontSize: '1.05rem' }}>{mau.toLocaleString('en-IN')}</span>
+              </div>
+              <input 
+                type="range" min="2000" max="250000" step="1000" 
+                value={mau} onChange={(e) => setMau(Number(e.target.value))} 
+                className="roi-slider"
+              />
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.95rem', fontWeight: 700 }}>
+                <span>Average Monthly Spend / ARPU (₹):</span>
+                <span style={{ color: 'var(--primary)', fontSize: '1.05rem' }}>₹{arpu.toLocaleString('en-IN')}</span>
+              </div>
+              <input 
+                type="range" min="10" max="500" step="5" 
+                value={arpu} onChange={(e) => setArpu(Number(e.target.value))} 
+                className="roi-slider"
+              />
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.95rem', fontWeight: 700 }}>
+                <span>Current Monthly Churn Rate (%):</span>
+                <span style={{ color: 'var(--accent-rose)', fontSize: '1.05rem' }}>{churnRate}%</span>
+              </div>
+              <input 
+                type="range" min="1.0" max="10.0" step="0.5" 
+                value={churnRate} onChange={(e) => setChurnRate(Number(e.target.value))} 
+                className="roi-slider"
+              />
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.95rem', fontWeight: 700 }}>
+                <span>Target FinSight Churn Reduction (%):</span>
+                <span style={{ color: 'var(--accent-emerald)', fontSize: '1.05rem' }}>{reductionRate}%</span>
+              </div>
+              <input 
+                type="range" min="10" max="50" step="5" 
+                value={reductionRate} onChange={(e) => setReductionRate(Number(e.target.value))} 
+                className="roi-slider"
+              />
+            </div>
+          </div>
+
+          {/* Results Output Display Card */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(236, 72, 153, 0.05) 100%)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+            borderRadius: 'var(--radius-xl)',
+            padding: '2.25rem',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+              Projected Annual Revenue Saved
+            </div>
+            <div style={{ fontSize: '3rem', fontWeight: 900, color: 'var(--primary)', lineHeight: 1, marginBottom: '1.25rem' }}>
+              ₹{Math.round(annualRevenueSaved).toLocaleString('en-IN')}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(99, 102, 241, 0.15)' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Total Exposure (RAR)</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>₹{Math.round(annualRevenueAtRisk).toLocaleString('en-IN')}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Projected FinSight ROI</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--accent-emerald)' }}>{projectedRoiMultiple}x ROI</div>
+              </div>
+            </div>
+
+            <button 
+              className="btn-primary"
+              onClick={onLaunchDashboard}
+              style={{ width: '100%', marginTop: '1.75rem', justifyContent: 'center', padding: '0.85rem' }}
+            >
+              Protect Revenue Now <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* DYNAMIC TABBED PANEL: SCHEMAS & MATH ENGINE */}
+      <div id="schemas" style={{ marginBottom: '6rem', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)', boxShadow: 'var(--shadow-md)', overflow: 'hidden' }}>
         
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs Header */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'rgba(99, 102, 241, 0.02)' }}>
           <button 
             onClick={() => setActiveInfoTab('data')}
@@ -292,13 +577,14 @@ export default function LandingPage({ onLaunchDashboard }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '0.5rem',
+              gap: '0.6rem',
               transition: 'all 0.2s ease'
             }}
           >
-            <FileSpreadsheet size={20} /> Supported Import Data
+            <FileSpreadsheet size={20} /> Supported Import Data & Schemas
           </button>
           <button 
+            id="math-engine"
             onClick={() => setActiveInfoTab('math')}
             style={{
               flex: 1,
@@ -313,23 +599,23 @@ export default function LandingPage({ onLaunchDashboard }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '0.5rem',
+              gap: '0.6rem',
               transition: 'all 0.2s ease'
             }}
           >
-            <Calculator size={20} /> Mathematical Formulas & Engine
+            <Calculator size={20} /> Auditable Math Engine & Formulas
           </button>
         </div>
 
-        {/* Tab Content */}
+        {/* Tab Body */}
         <div style={{ padding: '2.5rem' }}>
           <AnimatePresence mode="wait">
             {activeInfoTab === 'data' ? (
               <motion.div 
                 key="data-tab" 
-                initial={{ opacity: 0, x: -10 }} 
-                animate={{ opacity: 1, x: 0 }} 
-                exit={{ opacity: 0, x: 10 }}
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
               >
                 <div style={{ marginBottom: '2rem' }}>
@@ -337,22 +623,22 @@ export default function LandingPage({ onLaunchDashboard }) {
                     Fuzzy Schema-Agnostic Import Ingestion
                   </h3>
                   <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    FinSight does not require a rigid, hardcoded CSV structure. Our fuzzy mapping engine processes columns dynamically. When importing, simply ensure your dataset fits one of these primary fintech templates:
+                    FinSight does not force you to alter your database exports. Our fuzzy column mapping engine dynamically parses transactions across 5 core FinTech templates:
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                  {schemas.map((s, idx) => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+                  {schemas.map((s) => (
                     <div 
                       key={s.id} 
                       style={{ 
                         background: 'var(--bg-body)', 
                         borderRadius: 'var(--radius-lg)', 
-                        padding: '1.5rem', 
+                        padding: '1.75rem', 
                         border: '1px solid var(--border)',
                         display: 'grid',
-                        gridTemplateColumns: '80px 1fr',
-                        gap: '1rem',
+                        gridTemplateColumns: '70px 1fr',
+                        gap: '1.25rem',
                         alignItems: 'start'
                       }}
                     >
@@ -361,33 +647,37 @@ export default function LandingPage({ onLaunchDashboard }) {
                       </div>
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                          <h4 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>{s.name}</h4>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', background: 'rgba(99, 102, 241, 0.1)', padding: '0.2rem 0.6rem', borderRadius: '1rem' }}>
-                            Auto-Detect Trigger
+                          <h4 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>{s.name}</h4>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', background: 'rgba(99, 102, 241, 0.1)', padding: '0.25rem 0.65rem', borderRadius: '1rem' }}>
+                            Auto-Detect Match
                           </span>
                         </div>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '0.75rem', lineHeight: 1.5 }}>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginBottom: '0.85rem', lineHeight: 1.5 }}>
                           {s.description}
                         </p>
                         
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', fontSize: '0.85rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', fontSize: '0.85rem', marginBottom: '1rem' }}>
                           <div>
-                            <strong style={{ color: 'var(--text-primary)' }}>Required Header Matches:</strong>
+                            <strong style={{ color: 'var(--text-primary)' }}>Required Column Triggers:</strong>
                             <ul style={{ paddingLeft: '1.25rem', marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
                               {s.required.map((r, i) => <li key={i}>{r}</li>)}
                             </ul>
                           </div>
                           <div>
-                            <strong style={{ color: 'var(--text-primary)' }}>Optional/Contextual Matches:</strong>
-                            <ul style={{ paddingLeft: '1.25rem', marginTop: '0.25rem', color: 'var(--text-secondary)' }}>
-                              {s.optional.map((o, i) => <li key={i}>{o}</li>)}
-                            </ul>
+                            <strong style={{ color: 'var(--text-primary)' }}>FinSight Engineered Features:</strong>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.35rem' }}>
+                              {s.derivedFeatures.map((f, i) => (
+                                <span key={i} style={{ fontFamily: 'monospace', fontSize: '0.75rem', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--primary-dark)', padding: '0.15rem 0.5rem', borderRadius: '0.35rem', fontWeight: 600 }}>
+                                  {f}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
 
-                        <div style={{ marginTop: '0.75rem', background: 'var(--bg-card)', padding: '0.5rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
+                        <div style={{ background: 'var(--bg-card)', padding: '0.65rem 0.85rem', borderRadius: '0.5rem', border: '1px solid var(--border)' }}>
                           <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            <strong>Example Row:</strong> {s.sample}
+                            <strong style={{ color: 'var(--text-primary)' }}>Sample Row:</strong> {s.sample}
                           </span>
                         </div>
                       </div>
@@ -398,9 +688,9 @@ export default function LandingPage({ onLaunchDashboard }) {
             ) : (
               <motion.div 
                 key="math-tab" 
-                initial={{ opacity: 0, x: 10 }} 
-                animate={{ opacity: 1, x: 0 }} 
-                exit={{ opacity: 0, x: -10 }}
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
               >
                 <div style={{ marginBottom: '2rem' }}>
@@ -408,40 +698,44 @@ export default function LandingPage({ onLaunchDashboard }) {
                     Open, Auditable Financial Mathematics
                   </h3>
                   <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    FinSight rejects "black-box" decisions. We explicitly map transaction sequences to structured formulas to preserve auditing capabilities required by finance partners.
+                    FinSight rejects "black-box" predictions. Every metric is backed by explicit, auditable mathematical formulas designed for financial compliance:
                   </p>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.75rem' }}>
                   {mathFormulas.map((f, idx) => (
                     <div 
                       key={idx} 
                       style={{ 
                         borderLeft: '4px solid var(--primary)', 
                         paddingLeft: '1.5rem', 
-                        paddingVertical: '0.5rem' 
+                        background: 'rgba(99, 102, 241, 0.02)',
+                        padding: '1.25rem 1.5rem',
+                        borderRadius: '0 0.75rem 0.75rem 0',
+                        border: '1px solid var(--border)',
+                        borderLeftColor: 'var(--primary)'
                       }}
                     >
-                      <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                      <h4 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
                         {f.title}
                       </h4>
                       <div 
                         style={{ 
                           fontFamily: 'monospace', 
                           fontWeight: 700, 
-                          color: 'var(--primary)', 
-                          fontSize: '1rem',
-                          background: 'rgba(99, 102, 241, 0.04)',
-                          padding: '0.5rem 1rem',
+                          color: 'var(--primary-dark)', 
+                          fontSize: '0.95rem',
+                          background: 'rgba(99, 102, 241, 0.06)',
+                          padding: '0.5rem 0.85rem',
                           borderRadius: 'var(--radius-sm)',
                           display: 'inline-block',
-                          marginBottom: '0.5rem',
-                          border: '1px dashed rgba(99, 102, 241, 0.15)'
+                          marginBottom: '0.6rem',
+                          border: '1px dashed rgba(99, 102, 241, 0.2)'
                         }}
                       >
                         {f.formula}
                       </div>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: 1.5, marginBottom: '0.5rem' }}>
                         {f.explanation}
                       </p>
                       {f.why && (
@@ -449,11 +743,11 @@ export default function LandingPage({ onLaunchDashboard }) {
                           color: 'var(--primary)', 
                           fontSize: '0.85rem', 
                           lineHeight: 1.5, 
-                          marginTop: '0.5rem',
                           padding: '0.5rem 0.75rem',
-                          background: 'rgba(99, 102, 241, 0.06)',
+                          background: 'rgba(99, 102, 241, 0.08)',
                           borderRadius: 'var(--radius-sm)',
-                          fontStyle: 'italic'
+                          fontStyle: 'italic',
+                          fontWeight: 500
                         }}>
                           💡 {f.why}
                         </p>
@@ -467,142 +761,167 @@ export default function LandingPage({ onLaunchDashboard }) {
         </div>
       </div>
 
-      {/* The Technical Pipeline: How We Do It */}
-      <div style={{ marginBottom: '5rem', padding: '3rem 2rem', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)', boxShadow: 'var(--shadow-md)' }}>
+      {/* TECHNICAL PIPELINE STEPS */}
+      <div style={{ marginBottom: '6rem', padding: '3rem 2.5rem', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-2xl)', boxShadow: 'var(--shadow-md)' }}>
         <div style={{ textAlign: 'center', marginBottom: '3.5rem' }}>
-          <h2 style={{ fontSize: '2.25rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
-            How FinSight works under the hood
+          <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+            How FinSight Works Under the Hood
           </h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
-            A state-of-the-art analytical flow designed for reliability and absolute clarity.
+            A state-of-the-art analytical architecture combining XGBoost, SHAP, and Groq LLMs.
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2.5rem' }}>
-          {/* Step 1 */}
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem' }}>
-                1
-              </div>
-              <div style={{ width: '2px', flexGrow: 1, background: 'var(--border)', minHeight: '50px', marginTop: '0.5rem' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '2rem' }}>
+          <div style={{ background: 'var(--bg-body)', padding: '1.75rem', borderRadius: 'var(--radius-xl)', border: '1px solid var(--border)' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, marginBottom: '1.25rem' }}>
+              1
             </div>
-            <div>
-              <h4 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Database size={18} color="var(--primary)" /> Schema-Agnostic Data Ingestion
-              </h4>
-              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.95rem' }}>
-                Simply upload your raw transaction files. The engine autonomously detects the domain (UPI, Tax credits, Banking data) and transforms sparse records into standard behavioral matrices.
-              </p>
-            </div>
+            <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Database size={18} color="var(--primary)" /> Schema Ingestion
+            </h4>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              Raw payment logs are dynamically parsed into standard behavioral features like recency gaps and IPI consistency.
+            </p>
           </div>
 
-          {/* Step 2 */}
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem' }}>
-                2
-              </div>
-              <div style={{ width: '2px', flexGrow: 1, background: 'var(--border)', minHeight: '50px', marginTop: '0.5rem' }} />
+          <div style={{ background: 'var(--bg-body)', padding: '1.75rem', borderRadius: 'var(--radius-xl)', border: '1px solid var(--border)' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, marginBottom: '1.25rem' }}>
+              2
             </div>
-            <div>
-              <h4 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Cpu size={18} color="var(--primary)" /> Ensemble Machine Learning Classifier
-              </h4>
-              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.95rem' }}>
-                We combine the stability of a Random Forest with the high accuracy of XGBoost models. The engine applies Isotonic Calibration to guarantee real probabilities (0–100%) instead of arbitrary scores.
-              </p>
-            </div>
+            <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Cpu size={18} color="var(--primary)" /> Calibrated XGBoost
+            </h4>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              Ensemble decision trees predict raw risk, followed by Isotonic Regression for 100% calibrated probabilities.
+            </p>
           </div>
 
-          {/* Step 3 */}
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem' }}>
-                3
-              </div>
-              <div style={{ width: '2px', flexGrow: 1, background: 'var(--border)', minHeight: '50px', marginTop: '0.5rem' }} />
+          <div style={{ background: 'var(--bg-body)', padding: '1.75rem', borderRadius: 'var(--radius-xl)', border: '1px solid var(--border)' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, marginBottom: '1.25rem' }}>
+              3
             </div>
-            <div>
-              <h4 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Brain size={18} color="var(--primary)" /> Explainable AI (SHAP Framework)
-              </h4>
-              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.95rem' }}>
-                No black boxes. FinSight maps out SHAP contribution values for each feature so you can see exactly which customer interactions (low recency, failing UPIs, drop in transaction frequency) drive risk.
-              </p>
-            </div>
+            <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Brain size={18} color="var(--primary)" /> TreeSHAP Explainer
+            </h4>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              Identifies exact feature contribution scores per user so every risk score can be explained to compliance officers.
+            </p>
           </div>
 
-          {/* Step 4 */}
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem' }}>
-                4
-              </div>
+          <div style={{ background: 'var(--bg-body)', padding: '1.75rem', borderRadius: 'var(--radius-xl)', border: '1px solid var(--border)' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, marginBottom: '1.25rem' }}>
+              4
             </div>
-            <div>
-              <h4 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <CheckCircle2 size={18} color="var(--primary)" /> Groq LLM (Llama 3.3) Strategic Layer
-              </h4>
-              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.95rem' }}>
-                Our model outputs are parsed and sent to Llama 3.3, which synthesizes complex mathematical weights into three key hypotheses and actionable intervention strategies for your product managers.
-              </p>
-            </div>
+            <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <CheckCircle2 size={18} color="var(--primary)" /> Groq Llama 3.3
+            </h4>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              Synthesizes feature weights into executive hypotheses and concrete retention playbooks for your growth team.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Feature Highlights Grid */}
-      <div style={{ marginBottom: '5rem' }}>
+      {/* INTERACTIVE FAQ ACCORDION SECTION */}
+      <div id="faq" style={{ marginBottom: '6rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-            Designed for Modern Finance Teams
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', padding: '0.4rem 1rem', borderRadius: '2rem', fontSize: '0.85rem', fontWeight: 700, marginBottom: '1rem' }}>
+            <HelpCircle size={16} /> Frequently Asked Questions
+          </div>
+          <h2 style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+            Got Questions? We Have Answers.
           </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', maxWidth: '600px', margin: '0 auto' }}>
-            Everything you need to audit, predict, and prevent churn.
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
+            Everything you need to know about FinSight\'s security, math models, and ingestion engine.
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', gap: '1rem' }}>
-            <div style={{ color: 'var(--primary)' }}><BarChart3 size={20} /></div>
-            <div>
-              <h5 style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Live Drift Monitoring</h5>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.5 }}>Detects when real-world transactional behavior shifts using Bonferroni-corrected KS-Tests.</p>
-            </div>
-          </div>
-
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', gap: '1rem' }}>
-            <div style={{ color: 'var(--primary)' }}><Users size={20} /></div>
-            <div>
-              <h5 style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Strategic Personas</h5>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.5 }}>Groups customers into intuitive profiles (e.g. "Loyal Giants", "Fading Stars") for your business team.</p>
-            </div>
-          </div>
-
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', gap: '1rem' }}>
-            <div style={{ color: 'var(--primary)' }}><CheckCircle2 size={20} /></div>
-            <div>
-              <h5 style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>A/B Test Sandbox</h5>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.5 }}>Ready to track actual interventions against models to create a self-healing feedback loop.</p>
-            </div>
-          </div>
+        <div style={{ maxWidth: '850px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {faqs.map((faq, idx) => {
+            const isOpen = activeFaq === idx;
+            return (
+              <div key={idx}>
+                <button 
+                  className={`faq-question-btn ${isOpen ? 'active' : ''}`}
+                  onClick={() => setActiveFaq(isOpen ? null : idx)}
+                >
+                  <span>{faq.q}</span>
+                  {isOpen ? <ChevronUp size={20} color="var(--primary)" /> : <ChevronDown size={20} color="var(--text-secondary)" />}
+                </button>
+                {isOpen && (
+                  <div className="faq-answer-box">
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Footer / Final CTA */}
-      <div style={{ textAlign: 'center', padding: '3rem 1.5rem', borderTop: '1px solid var(--border)' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-          FinSight Platform · Built with React 19, FastAPI, XGBoost, and Groq (Llama 3.3)
+      {/* FINAL CALL TO ACTION BANNER */}
+      <div style={{
+        background: 'linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--secondary) 100%)',
+        borderRadius: 'var(--radius-2xl)',
+        padding: '4rem 2rem',
+        textAlign: 'center',
+        color: '#ffffff',
+        boxShadow: '0 20px 50px rgba(99, 102, 241, 0.35)',
+        marginBottom: '4rem'
+      }}>
+        <h2 style={{ fontSize: '2.6rem', fontWeight: 900, marginBottom: '1rem', letterSpacing: '-0.02em' }}>
+          Ready to Stop Churn & Protect Revenue?
+        </h2>
+        <p style={{ fontSize: '1.2rem', opacity: 0.9, maxWidth: '650px', margin: '0 auto 2.25rem', lineHeight: 1.6 }}>
+          Experience the full FinSight platform with built-in sample datasets or upload your own transaction logs in seconds.
         </p>
-        <button 
-          className="btn-primary" 
-          onClick={onLaunchDashboard}
-          style={{ cursor: 'pointer', padding: '0.75rem 1.75rem', borderRadius: 'var(--radius-md)', fontWeight: 600 }}
-        >
-          Enter Dashboard
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <button 
+            onClick={onLaunchDashboard}
+            style={{
+              background: '#ffffff',
+              color: 'var(--primary-dark)',
+              border: 'none',
+              padding: '1rem 2.5rem',
+              borderRadius: 'var(--radius-lg)',
+              fontWeight: 800,
+              fontSize: '1.05rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)'
+            }}
+          >
+            Enter FinSight Platform <ArrowRight size={20} />
+          </button>
+        </div>
       </div>
+
+      {/* SLEEK ENTERPRISE FOOTER */}
+      <footer style={{ borderTop: '1px solid var(--border)', paddingTop: '3rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <Brain size={20} color="var(--primary)" />
+            <span style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>FinSight Platform</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'rgba(16, 185, 129, 0.1)', padding: '0.35rem 0.85rem', borderRadius: '1rem', color: '#10b981', fontSize: '0.8rem', fontWeight: 700 }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+            All Systems Operational
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+          <div>
+            Built with React 19, FastAPI, XGBoost, and Groq (Llama 3.3)
+          </div>
+          <div>
+            © {new Date().getFullYear()} FinSight Enterprise Retention Intelligence. All rights reserved.
+          </div>
+        </div>
+      </footer>
 
     </div>
   );
