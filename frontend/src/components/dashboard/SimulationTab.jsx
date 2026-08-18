@@ -30,19 +30,51 @@ export default function SimulationTab({ s, segChurn, setGlobalSimResult, fetchLl
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
                     {(llmHypotheses?.hypotheses || s?.hypotheses)?.map((h, i) => {
-                      // Correctly map hypothesis theme to its corresponding logical SHAP driver
-                      const hTheme = (h.driver || h.title || '').toLowerCase();
-                      const findDriver = (keywords) => s?.top_drivers?.find(d => keywords.some(k => d.feature.toLowerCase().includes(k)));
-                      
+                      // Use the full hypothesis text for richer keyword matching
+                      const hTheme = (
+                        (h.driver || '') + ' ' +
+                        (h.title || '') + ' ' +
+                        (h.hypothesis || '') + ' ' +
+                        (h.action || '')
+                      ).toLowerCase();
+                      const findDriver = (keywords) =>
+                        s?.top_drivers?.find(d =>
+                          keywords.some(k => d.feature.toLowerCase().includes(k))
+                        );
+
                       let driver = null;
-                      if (hTheme.includes('inactivity') || hTheme.includes('recency')) {
-                        driver = findDriver(['recency', 'delay', 'time since']) || s?.top_drivers?.[0];
-                      } else if (hTheme.includes('frequency')) {
-                        driver = findDriver(['frequency', 'order count']) || s?.top_drivers?.[1];
-                      } else if (hTheme.includes('wallet') || hTheme.includes('monetary')) {
-                        driver = findDriver(['spending', 'monetary', 'wallet share']) || s?.top_drivers?.[2];
+                      if (
+                        hTheme.includes('inactivity') ||
+                        hTheme.includes('recency') ||
+                        hTheme.includes('days since') ||
+                        hTheme.includes('idle') ||
+                        hTheme.includes('payment interval')
+                      ) {
+                        driver =
+                          findDriver(['recency', 'delay', 'time since', 'payment_interval', 'days']) ||
+                          s?.top_drivers?.[0];
+                      } else if (
+                        hTheme.includes('frequency') ||
+                        hTheme.includes('transaction count') ||
+                        hTheme.includes('upi transaction')
+                      ) {
+                        driver =
+                          findDriver(['frequency', 'order count', 'upi_transaction', 'transaction_count']) ||
+                          s?.top_drivers?.[1];
+                      } else if (
+                        hTheme.includes('wallet') ||
+                        hTheme.includes('monetary') ||
+                        hTheme.includes('spend') ||
+                        hTheme.includes('min_spend') ||
+                        hTheme.includes('payment') ||
+                        hTheme.includes('amount') ||
+                        hTheme.includes('cashback')
+                      ) {
+                        driver =
+                          findDriver(['spending', 'monetary', 'wallet', 'amount', 'min_spend']) ||
+                          s?.top_drivers?.[2];
                       } else {
-                        driver = s?.top_drivers?.[i]; // Fallback
+                        driver = s?.top_drivers?.[i] ?? null; // Fallback to positional
                       }
 
                       const shapContext = driver

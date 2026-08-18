@@ -444,10 +444,17 @@ export default function WhatIfSandbox({
   const backendCostPerUser = segData?.intervention_cost || 50;
 
   const activePresetOrCampaign = activeCampaign || activePreset;
-  const interventionCost = activePresetOrCampaign 
-    ? activePresetOrCampaign.costPerUser * (result?.users_affected || 0)
-    : backendCostPerUser * (result?.users_affected || 0);
-  const predictedLTVGained = result ? (result.ltv_saved !== undefined ? result.ltv_saved : (avgLTV * (churnImprovement / 100) * result.users_affected)) : 0;
+  // Math.round prevents floating-point artefacts like ₹5,27,567.29 in display
+  const interventionCost = Math.round(
+    activePresetOrCampaign
+      ? activePresetOrCampaign.costPerUser * (result?.users_affected || 0)
+      : backendCostPerUser * (result?.users_affected || 0)
+  );
+  const predictedLTVGained = result
+    ? (result.ltv_saved !== undefined
+        ? Math.round(result.ltv_saved)
+        : Math.round(avgLTV * (churnImprovement / 100) * result.users_affected))
+    : 0;
   const isProfitable = predictedLTVGained > (interventionCost * 0.85);
 
   return (
@@ -491,8 +498,13 @@ export default function WhatIfSandbox({
         <select 
           value={segment} 
           onChange={e => {
-            setSegment(e.target.value);
-            if (e.target.value) runSimulation(feature, delta, e.target.value);
+            const newSeg = e.target.value;
+            setSegment(newSeg);
+            // Clear stale result immediately so old segment's insight isn't shown
+            setResult(null);
+            setRoiExplanation(null);
+            setAbTest(null);
+            if (newSeg) runSimulation(feature, delta, newSeg);
           }} 
           className="select-dataset" 
           style={{ minWidth: '220px' }}

@@ -148,12 +148,36 @@ export default function InterventionEngine({ segments, segChurn, metrics, domain
               const roiColor = isProfitable ? '#10b981' : '#f43f5e';
               const personaName = PERSONA_DEFINITIONS[seg]?.label || seg;
 
-              const dynIntervention = interventions?.find(iv => iv.segment === seg);
-              const problem = dynIntervention?.problem || (segData?.avg_churn > 0.4 ? `Critical churn at ${churnPct}%` : segData?.avg_churn > 0.2 ? `Elevated risk at ${churnPct}%` : `Stable performance at ${churnPct}%`);
-              let action = dynIntervention?.action || (isProfitable ? 'Targeted retention campaign' : 'Monitor & assess');
-              if (!isProfitable) {
-                action = 'Minimize Loss / Debt Recovery';
-              }
+              // Segment-aware fallback problem description
+              const SEGMENT_PROBLEM_MAP = {
+                'Champions':      churnPct !== '—' ? `Stable (${churnPct}%) — protect & grow` : 'Stable — protect & grow',
+                'Loyalists':      churnPct !== '—' ? `Stable (${churnPct}%) but growth opportunity` : 'Stable but growth opportunity',
+                'Promising':      churnPct !== '—' ? `Rising (${churnPct}%) — needs nurture` : 'Rising — needs nurture',
+                'At Risk':        churnPct !== '—' ? `High churn risk (${churnPct}%) — urgent` : 'High churn risk — urgent',
+                'Hibernating':    churnPct !== '—' ? `Dormant (${churnPct}%) — re-engage needed` : 'Dormant — re-engage needed',
+                'Needs Attention':churnPct !== '—' ? `Irregular (${churnPct}%) — friction present` : 'Irregular — friction present',
+                'New':            churnPct !== '—' ? `Early (${churnPct}%) — onboarding phase` : 'Early — onboarding phase',
+              };
+              const SEGMENT_ACTION_MAP = {
+                'Champions':       'VIP concierge + exclusive reward tier',
+                'Loyalists':       'Loyalty tier upgrade + cross-sell premium products',
+                'Promising':       'Onboarding nudge + early loyalty reward',
+                'At Risk':         'Urgent win-back offer + personalised outreach',
+                'Hibernating':     'High-value re-engagement incentive campaign',
+                'Needs Attention': 'Friction audit + targeted UX improvement',
+                'New':             'Second-purchase incentive + guided onboarding',
+              };
+              const problem = dynIntervention?.problem
+                || SEGMENT_PROBLEM_MAP[seg]
+                || (segData?.avg_churn > 0.4
+                      ? `Critical churn at ${churnPct}%`
+                      : segData?.avg_churn > 0.2
+                        ? `Elevated risk at ${churnPct}%`
+                        : `Stable performance at ${churnPct}%`);
+              let action = dynIntervention?.action
+                || (isProfitable
+                      ? (SEGMENT_ACTION_MAP[seg] || 'Targeted retention campaign')
+                      : 'Minimize Loss / Debt Recovery');
               const interventionColor = SEGMENT_COLORS[seg] || '#6366f1';
 
               return (
