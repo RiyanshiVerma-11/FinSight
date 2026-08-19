@@ -140,6 +140,7 @@ export default function InterventionEngine({ segments, segChurn, metrics, domain
           <tbody>
             {segmentList.map(([seg, count], i) => {
               const segData = segChurn?.find(s => s.segment === seg);
+              const dynIntervention = interventions?.find(item => item.segment === seg || item.persona === seg);
               const churnPct = segData ? (segData.avg_churn * 100).toFixed(1) : '—';
               
               const estLtv = Math.round(segData?.est_ltv || 1000);
@@ -168,12 +169,11 @@ export default function InterventionEngine({ segments, segChurn, metrics, domain
                 'New':             'Second-purchase incentive + guided onboarding',
               };
               const problem = dynIntervention?.problem
-                || SEGMENT_PROBLEM_MAP[seg]
                 || (segData?.avg_churn > 0.4
                       ? `Critical churn at ${churnPct}%`
                       : segData?.avg_churn > 0.2
                         ? `Elevated risk at ${churnPct}%`
-                        : `Stable performance at ${churnPct}%`);
+                        : (SEGMENT_PROBLEM_MAP[seg] || `Stable performance at ${churnPct}%`));
               let action = dynIntervention?.action
                 || (isProfitable
                       ? (SEGMENT_ACTION_MAP[seg] || 'Targeted retention campaign')
